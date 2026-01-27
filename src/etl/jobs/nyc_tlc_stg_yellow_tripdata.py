@@ -1,13 +1,19 @@
 from pyspark.sql import SparkSession, functions as F
+from utils.logger import log_jvm_heap
 
 
 def build_spark(app_name: str = "nyc-tlc-staging-yellow-tripdata") -> SparkSession:
     # Don't hardcode master here; let spark-submit decide.
-    return SparkSession.builder.appName(app_name).getOrCreate()
+    return (
+        SparkSession.builder.appName(app_name)
+        .config("spark.executor.memory", "6g")
+        .getOrCreate()
+    )
 
 
 def main():
     spark = build_spark()
+    log_jvm_heap(spark)
 
     spark.conf.set("spark.sql.adaptive.enabled", "true")
     spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
@@ -33,20 +39,24 @@ def main():
         "DOLocationID": "dropoff_location_id",
         "Airport_fee": "airport_fee",
         "RatecodeID": "rate_code_id",
-        "rate_code": "rate_code_id",
-        "Rate_Code": "rate_code_id",
         "store_and_forward": "store_and_forward_flag",
         "store_and_fwd_flag": "store_and_forward_flag",
         "Passenger_Count": "passenger_count",
         "Trip_Distance": "trip_distance",
-        "Payment_Type": "payment_type",
         "Fare_Amt": "fare_amount",
         "Tip_Amt": "tip_amount",
         "Tolls_Amt": "tolls_amount",
         "Total_Amt": "total_amount",
     }
+    excluded_cols = {"rate_code", "Rate_Code", "payment_type", "Payment_Type"}
     stg = (
-        raw.select([F.col(c).alias(rename_map.get(c, c)) for c in raw.columns])
+        raw.select(
+            [
+                F.col(c).alias(rename_map.get(c, c))
+                for c in raw.columns
+                if c not in excluded_cols
+            ]
+        )
         .withColumn("pickup_ts", F.to_timestamp("pickup_ts"))
         .withColumn("dropoff_ts", F.to_timestamp("dropoff_ts"))
         .withColumn(
@@ -58,6 +68,12 @@ def main():
         .withColumn("month", F.month("pickup_ts"))
         .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
     )
+
+    # TODO: needs proper handling based on data dictionary
+    if "rate_code_id" not in stg.columns:
+        stg = stg.withColumn("rate_code_id", F.lit(None).cast("int"))
+    if "payment_type" not in stg.columns:
+        stg = stg.withColumn("payment_type", F.lit(None).cast("string"))
     if "extra" not in stg.columns and "surcharge" in stg.columns:
         stg = stg.withColumn("extra", F.col("surcharge"))
     money_cols = [
