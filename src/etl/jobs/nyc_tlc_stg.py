@@ -11,17 +11,24 @@ def main():
 
     raw = spark.read.parquet("s3a://raw/data/2023/yellow_tripdata_*.parquet")
 
+    rename_map = {
+        "VendorID": "vendor_id",
+        "tpep_pickup_datetime": "pickup_ts",
+        "tpep_dropoff_datetime": "dropoff_ts",
+        "PULocationID": "pickup_location_id",
+        "DOLocationID": "dropoff_location_id",
+        "Airport_fee": "airport_fee",
+        "RatecodeID": "rate_code_id",
+    }
     stg = (
-        raw.withColumnRenamed("VendorID", "vendor_id")
-        .withColumnRenamed("tpep_pickup_datetime", "pickup_ts")
-        .withColumnRenamed("tpep_dropoff_datetime", "dropoff_ts")
-        .withColumnRenamed("PULocationID", "pickup_location_id")
-        .withColumnRenamed("DOLocationID", "dropoff_location_id")
-        .withColumnRenamed("Airport_fee", "airport_fee")
-        .withColumnRenamed("RatecodeID", "rate_code_id")
+        raw.select([F.col(c).alias(rename_map.get(c, c)) for c in raw.columns])
         .withColumn(
             "trip_duration_min",
-            (F.col("dropoff_ts") - F.col("pickup_ts")) / 60.0,
+            (
+                F.col("dropoff_ts").cast("long")
+                - F.col("pickup_ts").cast("long")
+            )
+            / 60.0,
         )
         .withColumn("trip_duration_min", F.col("trip_duration_min").cast("long"))
         .withColumn("trip_year", F.year("pickup_ts"))
