@@ -222,3 +222,4 @@ data/
 test.py
 
 .idea/
+lakehouse_homelab.code-workspace
