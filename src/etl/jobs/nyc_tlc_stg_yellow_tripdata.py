@@ -1,11 +1,22 @@
-from pyspark.sql import SparkSession, functions as F
-from utils.logger import log_jvm_heap
+from pyspark.sql import SparkSession, functions as f
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    IntegerType,
+    LongType,
+    StringType,
+    TimestampType,
+    DecimalType,
+    DoubleType,
+)
 
 
 def build_spark(app_name: str = "nyc-tlc-staging-yellow-tripdata") -> SparkSession:
     # Don't hardcode master here; let spark-submit decide.
     return (
         SparkSession.builder.appName(app_name)
+        .config("spark.eventLog.enabled", "true")
+        .config("spark.eventLog.dir", "file:///opt/spark/spark-events")
         .config("spark.executor.memory", "6g")
         .getOrCreate()
     )
@@ -13,7 +24,6 @@ def build_spark(app_name: str = "nyc-tlc-staging-yellow-tripdata") -> SparkSessi
 
 def main():
     spark = build_spark()
-    log_jvm_heap(spark)
 
     spark.conf.set("spark.sql.adaptive.enabled", "true")
     spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
@@ -22,60 +32,61 @@ def main():
         str(256 * 1024 * 1024),
     )
 
-    raw = spark.read.option("basePath", "s3a://raw/data/").parquet(
-        "s3a://raw/data/*/yellow_tripdata_*.parquet"
+    schema = StructType(
+        [
+            StructField("VendorID", LongType(), True),
+            StructField("tpep_pickup_datetime", TimestampType(), True),
+            StructField("tpep_dropoff_datetime", TimestampType(), True),
+            StructField("passenger_count", LongType(), True),
+            StructField("trip_distance", DoubleType(), True),
+            StructField("RatecodeID", LongType(), True),
+            StructField("store_and_fwd_flag", StringType(), True),
+            StructField("PULocationID", LongType(), True),
+            StructField("DOLocationID", LongType(), True),
+            StructField("payment_type", LongType(), True),
+            StructField("fare_amount", DoubleType(), True),
+            StructField("extra", DoubleType(), True),
+            StructField("mta_tax", DoubleType(), True),
+            StructField("tip_amount", DoubleType(), True),
+            StructField("tolls_amount", DoubleType(), True),
+            StructField("improvement_surcharge", DoubleType(), True),
+            StructField("total_amount", DoubleType(), True),
+            StructField("congestion_surcharge", DoubleType(), True),
+            StructField("Airport_fee", DoubleType(), True),
+        ]
+    )
+
+    raw = (
+        spark.read.schema(schema)
+        .option("basePath", "s3a://raw/data/")
+        .parquet("s3a://raw/data/*/yellow_tripdata_*.parquet")
     )
 
     rename_map = {
         "VendorID": "vendor_id",
-        "vendor_name": "vendor_id",
-        "pickup_datetime": "pickup_ts",
         "tpep_pickup_datetime": "pickup_ts",
-        "Trip_Pickup_DateTime": "pickup_ts",
-        "dropoff_datetime": "dropoff_ts",
         "tpep_dropoff_datetime": "dropoff_ts",
-        "Trip_Dropoff_DateTime": "dropoff_ts",
         "PULocationID": "pickup_location_id",
         "DOLocationID": "dropoff_location_id",
         "Airport_fee": "airport_fee",
         "RatecodeID": "rate_code_id",
-        "store_and_forward": "store_and_forward_flag",
-        "store_and_fwd_flag": "store_and_forward_flag",
-        "Passenger_Count": "passenger_count",
-        "Trip_Distance": "trip_distance",
-        "Fare_Amt": "fare_amount",
-        "Tip_Amt": "tip_amount",
-        "Tolls_Amt": "tolls_amount",
-        "Total_Amt": "total_amount",
     }
-    excluded_cols = {"rate_code", "Rate_Code", "payment_type", "Payment_Type"}
+
     stg = (
-        raw.select(
-            [
-                F.col(c).alias(rename_map.get(c, c))
-                for c in raw.columns
-                if c not in excluded_cols
-            ]
-        )
-        .withColumn("pickup_ts", F.to_timestamp("pickup_ts"))
-        .withColumn("dropoff_ts", F.to_timestamp("dropoff_ts"))
+        raw.select(*[f.col(c).alias(rename_map.get(c, c)) for c in raw.columns])
+        .withColumn("pickup_ts", f.to_timestamp("pickup_ts"))
+        .withColumn("dropoff_ts", f.to_timestamp("dropoff_ts"))
         .withColumn(
             "trip_duration_min",
-            (F.col("dropoff_ts").cast("long") - F.col("pickup_ts").cast("long")) / 60.0,
+            (f.col("dropoff_ts").cast("long") - f.col("pickup_ts").cast("long")) / 60.0,
         )
-        .withColumn("trip_duration_min", F.col("trip_duration_min").cast("long"))
-        .withColumn("year", F.year("pickup_ts"))
-        .withColumn("month", F.month("pickup_ts"))
-        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
+        .withColumn("trip_duration_min", f.col("trip_duration_min").cast("long"))
+        .withColumn("year", f.year("pickup_ts"))
+        .withColumn("month", f.month("pickup_ts"))
+        .withColumn("is_valid_trip", f.col("trip_duration_min") > 0)
     )
 
     # TODO: needs proper handling based on data dictionary
-    if "rate_code_id" not in stg.columns:
-        stg = stg.withColumn("rate_code_id", F.lit(None).cast("int"))
-    if "payment_type" not in stg.columns:
-        stg = stg.withColumn("payment_type", F.lit(None).cast("string"))
-    if "extra" not in stg.columns and "surcharge" in stg.columns:
-        stg = stg.withColumn("extra", F.col("surcharge"))
     money_cols = [
         "fare_amount",
         "extra",
@@ -88,20 +99,20 @@ def main():
     ]
     for col in money_cols:
         if col in stg.columns:
-            stg = stg.withColumn(col, F.col(col).cast("decimal(10,2)"))
+            stg = stg.withColumn(col, f.col(col).cast("decimal(10,2)"))
         else:
-            stg = stg.withColumn(col, F.lit(None).cast("decimal(10,2)"))
+            stg = stg.withColumn(col, f.lit(None).cast("decimal(10,2)"))
 
     stg = (
-        stg.withColumn("has_tip", F.col("tip_amount") > 0)
+        stg.withColumn("has_tip", f.col("tip_amount") > 0)
         .withColumn(
             "tip_ratio",
-            F.when(
-                F.col("fare_amount") > 0,
-                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
+            f.when(
+                f.col("fare_amount") > 0,
+                f.round(f.col("tip_amount") / f.col("fare_amount"), 2),
             ).otherwise(0.0),
         )
-        .filter((F.col("passenger_count") > 0) & (F.col("passenger_count") <= 6))
+        .filter((f.col("passenger_count") > 0) & (f.col("passenger_count") <= 6))
     )
 
     (
