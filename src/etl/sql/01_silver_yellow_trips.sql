@@ -4,10 +4,10 @@ create table if not exists lakehouse.silver.yellow_trips (
     dropoff_ts timestamp,
     passenger_count int,
     trip_distance float,
-    ratecode_id int,
+    rate_code_id int,
     store_and_fwd_flag string,
-    pu_location_id int,
-    do_location_id int,
+    pickup_location_id int,
+    dropoff_location_id int,
     payment_type int,
     fare_amount float,
     extra float,
@@ -17,10 +17,16 @@ create table if not exists lakehouse.silver.yellow_trips (
     improvement_surcharge float,
     total_amount float,
     congestion_surcharge float,
-    airport_fee float
+    airport_fee float,
+    trip_duration_min float,
+    year int,
+    month int,
+    is_valid_trip boolean,
+    has_tip boolean,
+    tip_ratio float
 )
 using iceberg
-partitioned by (month(pickup_ts))
+partitioned by (year, month)
 tblproperties (
     'format-version'='2',
     'write.format.default'='parquet'
