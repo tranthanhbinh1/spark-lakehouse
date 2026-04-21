@@ -10,6 +10,7 @@ dependencies = [
     "ipykernel>=7.1.0",
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
+    "pydeequ>=1.5.0",
     "pyspark==4.0.1",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
