@@ -1,3 +1,5 @@
+from itertools import product
+
 from pyspark.sql import SparkSession, DataFrame, functions as f
 from pyspark.sql.types import (
     DoubleType,
@@ -86,14 +88,19 @@ def main():
 
     _year = [i for i in range(2011, 2025 + 1, 1)]
     _month = [i for i in range(1, 12 + 1, 1)]
-    partitions = zip(_year, _month)
+    partitions = product(_year, _month)
 
     for year, month in partitions:
-        df = spark.read.option("basePath", "s3a://raw/data/").parquet(
-            f"s3a://raw/data/{year}/yellow_tripdata_{year}-{month:02d}.parquet"
-        )
-        stg = normalize(df)
-        stg.writeTo("lakehouse.silver.yellow_trips").append()
+        try:
+            df = spark.read.option("basePath", "s3a://raw/data/").parquet(
+                f"s3a://raw/data/{year}/yellow_tripdata_{year}-{month:02d}.parquet"
+            )
+        # NOTE: Bad practice, did it here to by pass path not found error
+        except Exception as e:
+            print(repr(e))
+            continue
+        stg = normalize(df).filter((f.col("year") == year) & (f.col("month") == month))
+        stg.writeTo("lakehouse.silver.yellow_trips").overwritePartitions()
 
     spark.stop()
 

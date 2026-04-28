@@ -1,3 +1,5 @@
+from itertools import product
+
 from pyspark.sql import SparkSession, DataFrame, functions as f
 from pyspark.sql.types import (
     DoubleType,
@@ -131,7 +133,7 @@ def main():
 
     _year = [i for i in range(2014, 2025 + 1, 1)]
     _month = [i for i in range(1, 12 + 1, 1)]
-    partitions = zip(_year, _month)
+    partitions = product(_year, _month)
 
     for year, month in partitions:
         try:
@@ -142,8 +144,8 @@ def main():
         except Exception as e:
             print(repr(e))
             continue
-        stg = normalize(df)
-        stg.writeTo("lakehouse.silver.green_trips").append()
+        stg = normalize(df).filter((f.col("year") == year) & (f.col("month") == month))
+        stg.writeTo("lakehouse.silver.green_trips").overwritePartitions()
 
     spark.stop()
 
