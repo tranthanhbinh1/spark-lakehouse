@@ -6,7 +6,7 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 @dag(
     schedule="@daily",
     description="DAG to process trips data",
-    start_date=pendulum.datetime(2026, 1, 5, tz="UTC"),
+    start_date=pendulum.datetime(2026, 1, 5, tz="Asia/Ho_Chi_Minh"),
 )
 def yellow_trips_dag():
     _ = SparkSubmitOperator(
