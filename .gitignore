@@ -226,6 +226,6 @@ test.py
 lakehouse_homelab.code-workspace
 
 # Airflow
-airflow/logs/
-airflow/plugins/
-airflow/config/
+orchestration/logs/
+orchestration/plugins/
+orchestration/config/

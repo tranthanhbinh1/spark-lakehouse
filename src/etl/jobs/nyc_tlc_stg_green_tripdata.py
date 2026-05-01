@@ -1,6 +1,7 @@
 from itertools import product
 
-from pyspark.sql import SparkSession, DataFrame, functions as f
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as f
 from pyspark.sql.types import (
     DoubleType,
 )
@@ -143,6 +144,7 @@ def main():
         # NOTE: Bad practice, did it here to by pass path not found error
         except Exception as e:
             print(repr(e))
+            print(f"Skipping {year}-{month} as it is not available")
             continue
         stg = normalize(df).filter((f.col("year") == year) & (f.col("month") == month))
         stg.writeTo("lakehouse.silver.green_trips").overwritePartitions()
