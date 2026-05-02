@@ -34,8 +34,8 @@ def _next_partition(year: int, month: int) -> tuple[int, int]:
     max_active_runs=1,
 )
 def yellow_trips_dag():
-    @task
-    def choose_partition() -> dict[str, int]:
+    @task(multiple_outputs=True)
+    def choose_partition() -> dict[str, str]:
         partition = Variable.get(STATE_VAR, default=DEFAULT_START_PARTITION)
         end_partition = Variable.get(END_VAR, default=DEFAULT_END_PARTITION)
 
@@ -46,31 +46,38 @@ def yellow_trips_dag():
                 f"No yellow trip partitions left after {end_partition}."
             )
 
-        return {"year": year, "month": month}
+        return {"year": str(year), "month": str(month)}
 
     @task
-    def advance_partition(partition: dict[str, int]) -> None:
-        next_year, next_month = _next_partition(partition["year"], partition["month"])
+    def advance_partition(year: str, month: str) -> None:
+        next_year, next_month = _next_partition(int(year), int(month))
         Variable.set(STATE_VAR, _format_partition(next_year, next_month))
+
+    partition = choose_partition()
 
     stage_partition = SparkSubmitOperator(
         task_id="stage_yellow_trips",
         application="/opt/spark/jobs/nyc_tlc_stg_trip_data.py",
         conn_id="spark",
+        conf={
+            "spark.driver.bindAddress": "0.0.0.0",
+            "spark.driver.host": "airflow-airflow-worker-1",
+        },
         application_args=[
             "--dataset",
             "yellow",
             "--year",
-            "{{ ti.xcom_pull(task_ids='choose_partition')['year'] }}",
+            partition["year"],
             "--month",
-            "{{ ti.xcom_pull(task_ids='choose_partition')['month'] }}",
+            partition["month"],
             "--input-base",
             "s3a://raw/data",
         ],
     )
 
-    partition = choose_partition()
-    stage_partition >> advance_partition(partition)
+    advance = advance_partition(partition["year"], partition["month"])
+
+    partition >> stage_partition >> advance
 
 
 yellow_trips_dag()
