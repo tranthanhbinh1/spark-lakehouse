@@ -18,9 +18,9 @@ def _print_progress(completed, total):
 
 def fetch_yellow_trips_initial_data(month: str, year: int):
     """Download NYC TLC Trips data for a given month and year."""
-    yellow_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year}-{month}.parquet"
+    yellow_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_trip_data_{year}-{month}.parquet"
     response = requests.get(yellow_trip_data_base_url.format(year=year, month=month))
-    file_path = f"data/{year}/yellow_tripdata_{year}-{month}.parquet"
+    file_path = f"data/{year}/yellow_trip_data_{year}-{month}.parquet"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as f:
         f.write(response.content)
@@ -28,7 +28,7 @@ def fetch_yellow_trips_initial_data(month: str, year: int):
 
 def fetch_green_trips_initial_data(month: str, year: int):
     """Download NYC TLC Green Trips data for a given month and year."""
-    green_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/green_tripdata_{year}-{month}.parquet"
+    green_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/green_trip_data_{year}-{month}.parquet"
     url = green_trip_data_base_url.format(year=year, month=month)
     try:
         response = requests.get(url)
@@ -39,7 +39,7 @@ def fetch_green_trips_initial_data(month: str, year: int):
             return
         raise
 
-    file_path = f"data/{year}/green_tripdata_{year}-{month}.parquet"
+    file_path = f"data/{year}/green_trip_data_{year}-{month}.parquet"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as f:
         f.write(response.content)
@@ -47,7 +47,7 @@ def fetch_green_trips_initial_data(month: str, year: int):
 
 def fetch_fhv_trips_initial_data(month: str, year: int):
     """Download NYC TLC FHV (For Hire Vehicle) Trips data for a given month and year."""
-    fhv_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/fhv_tripdata_{year}-{month}.parquet"
+    fhv_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/fhv_trip_data_{year}-{month}.parquet"
     url = fhv_trip_data_base_url.format(year=year, month=month)
     try:
         response = requests.get(url)
@@ -58,7 +58,7 @@ def fetch_fhv_trips_initial_data(month: str, year: int):
             return
         raise
 
-    file_path = f"data/{year}/fhv_tripdata_{year}-{month}.parquet"
+    file_path = f"data/{year}/fhv_trip_data_{year}-{month}.parquet"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as f:
         f.write(response.content)
@@ -66,7 +66,7 @@ def fetch_fhv_trips_initial_data(month: str, year: int):
 
 def fetch_fhvhv_trips_initial_data(month: str, year: int):
     """Download NYC TLC HVFHV (High Volume For Hire Vehicle) Trips data for a given month and year."""
-    fhvhv_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_tripdata_{year}-{month}.parquet"
+    fhvhv_trip_data_base_url = "https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_trip_data_{year}-{month}.parquet"
     url = fhvhv_trip_data_base_url.format(year=year, month=month)
     try:
         response = requests.get(url)
@@ -77,7 +77,7 @@ def fetch_fhvhv_trips_initial_data(month: str, year: int):
             return
         raise
 
-    file_path = f"data/{year}/fhvhv_tripdata_{year}-{month}.parquet"
+    file_path = f"data/{year}/fhvhv_trip_data_{year}-{month}.parquet"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as f:
         f.write(response.content)
