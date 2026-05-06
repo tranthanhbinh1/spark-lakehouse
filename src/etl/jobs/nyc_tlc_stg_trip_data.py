@@ -40,8 +40,7 @@ def add_trip_derivations(df: DataFrame) -> DataFrame:
         .withColumn("dropoff_ts", f.to_timestamp("dropoff_ts"))
         .withColumn(
             "trip_duration_min",
-            (f.col("dropoff_ts").cast("long") - f.col("pickup_ts").cast("long"))
-            / 60.0,
+            (f.col("dropoff_ts").cast("long") - f.col("pickup_ts").cast("long")) / 60.0,
         )
         .withColumn("year", f.year("pickup_ts"))
         .withColumn("month", f.month("pickup_ts"))
@@ -83,9 +82,7 @@ def normalize_yellow(df: DataFrame) -> DataFrame:
     for col in money_cols:
         normalized_df = with_optional_column(normalized_df, col, "float")
 
-    normalized_df = with_optional_column(
-        normalized_df, "congestion_surcharge", "float"
-    )
+    normalized_df = with_optional_column(normalized_df, "congestion_surcharge", "float")
     normalized_df = add_trip_derivations(normalized_df)
 
     return (
@@ -162,7 +159,9 @@ def normalize_green(df: DataFrame) -> DataFrame:
     for col in money_cols:
         normalized_df = with_optional_column(normalized_df, col, "float")
 
-    normalized_df = with_optional_column(normalized_df, "congestion_surcharge", "double")
+    normalized_df = with_optional_column(
+        normalized_df, "congestion_surcharge", "double"
+    )
     normalized_df = with_optional_column(normalized_df, "ehail_fee", "double")
     normalized_df = with_optional_column(normalized_df, "trip_type", "int")
     normalized_df = add_trip_derivations(normalized_df)

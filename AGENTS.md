@@ -1,150 +1,45 @@
 # AGENTS.md
 
-Use this guide when making changes in this repo.
+## Repo Shape
+- Python project pinned to `requires-python ==3.12`; dependencies live in `pyproject.toml` and `uv.lock`, so prefer `uv sync` and keep both files in sync when dependencies change.
+- Production ETL code is under `src/etl/`: `jobs/` contains PySpark jobs and `sql/` contains SparkSQL/Iceberg DDL.
+- Airflow DAGs live in `orchestration/dags/`; they submit Spark jobs from `/opt/spark/jobs`, which is expected to be a container mount of `src/etl/jobs`.
+- `scripts/bootstrap/initial_load.py` downloads NYC TLC parquet files into local `data/{year}/`; `data/` is ignored.
+- `notebooks/` are exploratory only; move production logic into `src/`.
 
-## Repository snapshot
-- Python 3.12 project with dependencies in `pyproject.toml`.
-- `uv.lock` is present; prefer uv for dependency management.
-- Source code lives under `src/` (Spark ETL jobs + utils).
-- Bootstrap scripts under `scripts/bootstrap/`.
-- Notebooks under `notebooks/` for exploration.
+## Commands
+- Install/update env: `uv sync`.
+- Lint: `uv run ruff check .`.
+- Format: `uv run ruff format .`.
+- No test suite or pytest config exists yet; use lint plus focused Spark dry runs when changing jobs.
+- Unified staging job dry run: `uv run python src/etl/jobs/nyc_tlc_stg_trip_data.py --dataset yellow --year 2011 --month 1 --dry-run`.
+- Unified staging job write path: `uv run python src/etl/jobs/nyc_tlc_stg_trip_data.py --dataset green --year 2014 --month 1 --input-base s3a://raw/data`.
+- Bootstrap currently downloads all four TLC datasets for hardcoded `year_to_download = 2025`; edit or parameterize before running if you need another year.
 
-## Setup
-- Create/activate a virtualenv (repo uses `.venv/`).
-- Prefer `uv sync` to install deps from `pyproject.toml`/`uv.lock`.
-- If uv is unavailable, use `python -m venv .venv` then `pip install -e .`.
-- Keep `uv.lock` updated if dependencies change.
+## Spark And Iceberg
+- `src/etl/jobs/nyc_tlc_stg_trip_data.py` is the current unified monthly job for `--dataset yellow|green`; older dataset-specific jobs still exist but Airflow points at the unified job.
+- Input path convention is `s3a://raw/data/{year}/{dataset}_tripdata_{year}-{month:02d}.parquet`.
+- Outputs are Iceberg tables `lakehouse.silver.yellow_trips` and `lakehouse.silver.green_trips`; DDL lives in `src/etl/sql/01_silver_yellow_trips.sql` and `02_silver_green_trips.sql`.
+- Writes use `overwritePartitions()`, so rerunning the same month is intended to be retry-safe.
+- Keep output columns and casts aligned with the SQL DDL; yellow and green schemas intentionally differ.
+- Preserve `year` and `month` as deterministic partition columns derived from `pickup_ts`.
 
-## Build
-- No build step is configured; this is a pure Python/Spark repo.
-- Spark jobs are run as scripts (see examples below).
+## Airflow Simulation
+- DAG IDs: `yellow_trips_simulated_arrival` and `green_trips_simulated_arrival`; both run daily with `catchup=False` and `max_active_runs=1`.
+- Monthly progress is stored in Airflow Variables, not logical dates: `yellow_trips_next_partition`, `green_trips_next_partition`, plus optional `*_end_partition`.
+- Default ranges are yellow `2011-01` through `2025-12` and green `2014-01` through `2025-12`.
+- DAG flow must stay `choose_partition -> stage_*_trips -> advance_partition`; only advance after Spark succeeds or failed retries will skip data.
+- Spark Standalone with PySpark must run Airflow `SparkSubmitOperator` in client mode; executors need the driver reachable via `spark.driver.host=airflow-airflow-worker-1` and `spark.driver.bindAddress=0.0.0.0`.
+- The Airflow Spark client runtime documented in `docs/spark_airflow_taxi_batch_simulation.md` uses Python 3.10 to match Spark workers; do not assume the repo's local Python 3.12 venv is the Airflow driver runtime.
+- Airflow workers need Spark 3.5.6, Java 17, `/opt/spark/spark-events`, S3A config, and AWS/MinIO env vars because the driver runs in the Airflow worker.
 
-## Lint & format
-- Lint: `ruff check .`
-- Format: `ruff format .`
-- VS Code uses Ruff as the default formatter (see `.vscode/settings.json`).
+## Local Artifacts And Secrets
+- Do not stage `.env`, `data/`, `orchestration/logs/`, `orchestration/plugins/`, `orchestration/config/`, `.idea/`, `.vscode/`, or `lakehouse_homelab.code-workspace`; they are local/ignored artifacts.
+- `test.py` is an ignored local S3 connectivity probe that loads `.env`; treat it as environment-specific unless the user explicitly asks to change it.
+- `build/` contains generated/package output; edit source under `src/` instead.
 
-## Tests
-- No test framework is configured yet.
-- If pytest is added, run all tests with `python -m pytest`.
-- Single test pattern: `python -m pytest path/to/test_file.py::test_name`.
-
-## Common run commands
-- Bootstrap NYC TLC parquet data: `python scripts/bootstrap/initial_load.py`.
-- Spark ETL job (yellow trips staging): `python src/etl/jobs/nyc_tlc_stg_yellow_tripdata.py`.
-- S3 connectivity check (uses `.env`): `python test.py`.
-
-## Cursor/Copilot rules
-- No `.cursor/rules`, `.cursorrules`, or `.github/copilot-instructions.md` found.
-
-## Code style (Python)
-- Use 4-space indentation; keep lines readable (Ruff format default is 88).
-- Prefer explicit imports; avoid wildcard imports.
-- Group imports as: standard library, third-party, local modules.
-- Keep top-level imports minimal in Spark jobs to reduce executor overhead.
-- Use `functions as f` alias for `pyspark.sql.functions` (existing pattern).
-- Prefer f-strings for formatting.
-- Keep functions small and single-purpose; factor reusable helpers into `src/utils/`.
-
-## Types
-- Use type hints for public functions.
-- Use `typing.cast` for Spark JVM bridges when needed.
-- Prefer `Optional[...]` or `| None` for nullable values.
-- Avoid `Any` unless interacting with Spark JVM or external dynamic APIs.
-
-## Naming
-- Modules/files: `snake_case.py`.
-- Functions/variables: `snake_case`.
-- Classes: `PascalCase`.
-- Constants: `UPPER_SNAKE_CASE`.
-- Spark columns: lower_snake_case; maintain consistency with rename maps.
-
-## Formatting & organization
-- Keep Spark config grouped near session creation.
-- Keep transformation chains readable; break long chains into blocks.
-- Prefer `.withColumn` chains for derived columns; avoid side effects.
-- Use `repartition`/`partitionBy` consciously; document why if non-obvious.
-
-## Error handling
-- Use `response.raise_for_status()` for HTTP requests.
-- Handle known error conditions explicitly (e.g., 403 in TLC data).
-- Avoid bare `except`; always catch specific exceptions.
-- Provide context in error messages (year/month, dataset, etc.).
-
-## Logging
-- Use Spark/log4j for job logs where possible.
-- Keep logging noisy but informative for data pipelines (progress, counts).
-- Avoid printing large dataframes; prefer schema/summary info.
-
-## Data & storage
-- Data lands under `data/` for local bootstrap; it is gitignored.
-- S3 paths use `s3a://`; keep bucket/path config out of code if possible.
-- Avoid collecting large datasets to the driver.
-- Cast types deliberately (see money/decimal columns pattern).
-- Prefer deterministic partitioning columns (year/month) for lakehouse paths.
-
-## Environment & secrets
-- Do not commit `.env`, credentials, or secrets.
-- `.env` is used by `test.py` via `python-dotenv`.
-- Prefer environment variables for AWS endpoints/keys and bucket names.
-
-## Spark conventions
-- Do not hardcode the Spark master in code; rely on `spark-submit`.
-- Stop Spark sessions explicitly (`spark.stop()`).
-- Enable adaptive execution only where needed (currently set in job).
-- Use `mergeSchema` only when required due to schema drift.
-- Keep schema decisions close to the read step.
-
-## Notebooks
-- Keep notebooks in `notebooks/` for exploration only.
-- Migrate production logic into `src/` scripts.
-- Clean outputs before committing notebooks when possible.
-
-## Packaging & imports
-- Repo uses a `src/` layout; ensure import paths work in scripts.
-- If you add a package config, prefer editable installs for local dev.
-- Keep `__init__.py` files present for packages.
-- Avoid relative imports that traverse upward (prefer absolute package imports).
-
-## Dependency changes
-- Add new dependencies to `pyproject.toml` with explicit versions.
-- Update `uv.lock` after dependency changes.
-- Avoid adding heavy libraries unless required for the pipeline.
-
-## CLI scripts
-- Keep script entry points under `scripts/` or `src/etl/jobs/`.
-- Use `if __name__ == "__main__":` guards for runnable scripts.
-- Add argparse for new scripts with user-facing options.
-
-## Data transformations
-- Keep rename maps adjacent to schema handling.
-- Prefer `select` with explicit columns to avoid accidental schema drift.
-- Validate assumptions (e.g., passenger counts) before filtering.
-
-## Performance
-- Avoid `collect()` and `toPandas()` on large datasets.
-- Use `cache()` only when reused and memory is sufficient.
-- Prefer vectorized Spark operations over Python UDFs.
-
-## Adding tests (recommended pattern)
-- Create `tests/` and use `test_*.py` naming.
-- Use pytest fixtures for Spark sessions and S3 mocks.
-- Keep unit tests small; integration tests can be marked and skipped by default.
-- Document any required local services (MinIO, Spark) in test docs.
-
-## File hygiene
-- Do not commit data files, large artifacts, or `.venv/`.
-- Keep `uv.lock` and `pyproject.toml` in sync.
-- Avoid editing generated files under `build/`.
-- Keep notebooks lightweight; strip outputs when possible.
-
-## PRs/commits (if you create them)
-- Keep commits focused and descriptive.
-- Mention data/schema changes in commit messages.
-- Note any new runtime requirements (Spark configs, S3 paths).
-
-## When unsure
-- Search existing scripts for patterns before introducing new ones.
-- Follow Ruff/formatter output; do not hand-format.
-- Ask for clarification if a change affects data contracts or S3 layout.
-- Prefer making small, reviewable changes over large rewrites.
+## Change Guidance
+- Search existing Spark jobs and DAGs before changing schemas or partition behavior; schema changes usually require updating both Python normalization and `src/etl/sql/*.sql`.
+- Use `pyspark.sql.functions as f`, matching the existing job style.
+- Avoid broad `collect()`/`toPandas()` in ETL jobs; these pipelines target large taxi datasets.
+- Ask before changing S3 path conventions, Iceberg table names, Airflow Variable names, or the simulated monthly progression contract.
