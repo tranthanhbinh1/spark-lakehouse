@@ -1,5 +1,4 @@
 import argparse
-import pandera.pyspark as pa
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as f
