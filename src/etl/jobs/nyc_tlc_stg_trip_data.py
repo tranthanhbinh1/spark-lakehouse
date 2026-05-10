@@ -1,17 +1,7 @@
 import argparse
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as f
-
-
-def build_spark(app_name: str) -> SparkSession:
-    return (
-        SparkSession.builder.appName(app_name)
-        .config("spark.eventLog.enabled", "true")
-        .config("spark.eventLog.dir", "file:///opt/spark/spark-events")
-        .config("spark.executor.memory", "6g")
-        .getOrCreate()
-    )
+from pyspark.sql import functions as F
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,33 +14,43 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def build_spark(app_name: str) -> SparkSession:
+    return (
+        SparkSession.builder.appName(app_name)
+        .config("spark.eventLog.enabled", "true")
+        .config("spark.eventLog.dir", "file:///opt/spark/spark-events")
+        .config("spark.executor.memory", "6g")
+        .getOrCreate()
+    )
+
+
 def rename_columns(df: DataFrame, rename_map: dict[str, str]) -> DataFrame:
-    return df.select(*[f.col(c).alias(rename_map.get(c, c)) for c in df.columns])
+    return df.select(*[F.col(c).alias(rename_map.get(c, c)) for c in df.columns])
 
 
 def with_optional_column(df: DataFrame, column: str, data_type: str) -> DataFrame:
     if column in df.columns:
-        return df.withColumn(column, f.col(column).cast(data_type))
-    return df.withColumn(column, f.lit(None).cast(data_type))
+        return df.withColumn(column, F.col(column).cast(data_type))
+    return df.withColumn(column, F.lit(None).cast(data_type))
 
 
 def add_trip_derivations(df: DataFrame) -> DataFrame:
     return (
-        df.withColumn("pickup_ts", f.to_timestamp("pickup_ts"))
-        .withColumn("dropoff_ts", f.to_timestamp("dropoff_ts"))
+        df.withColumn("pickup_ts", F.to_timestamp("pickup_ts"))
+        .withColumn("dropoff_ts", F.to_timestamp("dropoff_ts"))
         .withColumn(
             "trip_duration_min",
-            (f.col("dropoff_ts").cast("long") - f.col("pickup_ts").cast("long")) / 60.0,
+            (F.col("dropoff_ts").cast("long") - F.col("pickup_ts").cast("long")) / 60.0,
         )
-        .withColumn("year", f.year("pickup_ts"))
-        .withColumn("month", f.month("pickup_ts"))
-        .withColumn("is_valid_trip", f.col("trip_duration_min") > 0)
-        .withColumn("has_tip", f.col("tip_amount") > 0)
+        .withColumn("year", F.year("pickup_ts"))
+        .withColumn("month", F.month("pickup_ts"))
+        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
+        .withColumn("has_tip", F.col("tip_amount") > 0)
         .withColumn(
             "tip_ratio",
-            f.when(
-                f.col("fare_amount") > 0,
-                f.round(f.col("tip_amount") / f.col("fare_amount"), 2),
+            F.when(
+                F.col("fare_amount") > 0,
+                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
             ).otherwise(0.0),
         )
     )
@@ -87,40 +87,40 @@ def normalize_yellow(df: DataFrame) -> DataFrame:
 
     return (
         normalized_df.withColumn(
-            "trip_duration_min", f.col("trip_duration_min").cast("float")
+            "trip_duration_min", F.col("trip_duration_min").cast("float")
         )
-        .withColumn("is_valid_trip", f.col("trip_duration_min") > 0)
-        .withColumn("has_tip", f.col("tip_amount") > 0)
+        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
+        .withColumn("has_tip", F.col("tip_amount") > 0)
         .withColumn(
             "tip_ratio",
-            f.when(
-                f.col("fare_amount") > 0,
-                f.round(f.col("tip_amount") / f.col("fare_amount"), 2),
+            F.when(
+                F.col("fare_amount") > 0,
+                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
             )
             .otherwise(0.0)
             .cast("float"),
         )
-        .filter((f.col("passenger_count") > 0) & (f.col("passenger_count") <= 6))
+        .filter((F.col("passenger_count") > 0) & (F.col("passenger_count") <= 6))
         .select(
-            f.col("vendor_id").cast("int"),
+            F.col("vendor_id").cast("int"),
             "pickup_ts",
             "dropoff_ts",
-            f.col("passenger_count").cast("int"),
-            f.col("trip_distance").cast("float"),
-            f.col("rate_code_id").cast("int"),
+            F.col("passenger_count").cast("int"),
+            F.col("trip_distance").cast("float"),
+            F.col("rate_code_id").cast("int"),
             "store_and_fwd_flag",
-            f.col("pickup_location_id").cast("int"),
-            f.col("dropoff_location_id").cast("int"),
-            f.col("payment_type").cast("int"),
-            f.col("fare_amount").cast("float"),
-            f.col("extra").cast("float"),
-            f.col("mta_tax").cast("float"),
-            f.col("tip_amount").cast("float"),
-            f.col("tolls_amount").cast("float"),
-            f.col("improvement_surcharge").cast("float"),
-            f.col("total_amount").cast("float"),
-            f.col("congestion_surcharge").cast("float"),
-            f.col("airport_fee").cast("float"),
+            F.col("pickup_location_id").cast("int"),
+            F.col("dropoff_location_id").cast("int"),
+            F.col("payment_type").cast("int"),
+            F.col("fare_amount").cast("float"),
+            F.col("extra").cast("float"),
+            F.col("mta_tax").cast("float"),
+            F.col("tip_amount").cast("float"),
+            F.col("tolls_amount").cast("float"),
+            F.col("improvement_surcharge").cast("float"),
+            F.col("total_amount").cast("float"),
+            F.col("congestion_surcharge").cast("float"),
+            F.col("airport_fee").cast("float"),
             "trip_duration_min",
             "year",
             "month",
@@ -168,18 +168,18 @@ def normalize_green(df: DataFrame) -> DataFrame:
 
     return (
         normalized_df.withColumn(
-            "trip_duration_min", f.col("trip_duration_min").cast("bigint")
+            "trip_duration_min", F.col("trip_duration_min").cast("bigint")
         )
-        .withColumn("is_valid_trip", f.col("trip_duration_min") > 0)
-        .withColumn("has_tip", f.col("tip_amount") > 0)
+        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
+        .withColumn("has_tip", F.col("tip_amount") > 0)
         .withColumn(
             "tip_ratio",
-            f.when(
-                f.col("fare_amount") > 0,
-                f.round(f.col("tip_amount") / f.col("fare_amount"), 2),
+            F.when(
+                F.col("fare_amount") > 0,
+                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
             ).otherwise(0.0),
         )
-        .filter((f.col("passenger_count") > 0) & (f.col("passenger_count") <= 6))
+        .filter((F.col("passenger_count") > 0) & (F.col("passenger_count") <= 6))
         .select(
             "vendor_id",
             "pickup_ts",
@@ -191,14 +191,14 @@ def normalize_green(df: DataFrame) -> DataFrame:
             "pickup_location_id",
             "dropoff_location_id",
             "payment_type",
-            f.col("fare_amount").cast("float"),
-            f.col("extra").cast("float"),
-            f.col("mta_tax").cast("float"),
-            f.col("tip_amount").cast("float"),
-            f.col("tolls_amount").cast("float"),
+            F.col("fare_amount").cast("float"),
+            F.col("extra").cast("float"),
+            F.col("mta_tax").cast("float"),
+            F.col("tip_amount").cast("float"),
+            F.col("tolls_amount").cast("float"),
             "ehail_fee",
-            f.col("improvement_surcharge").cast("float"),
-            f.col("total_amount").cast("float"),
+            F.col("improvement_surcharge").cast("float"),
+            F.col("total_amount").cast("float"),
             "congestion_surcharge",
             "trip_type",
             "trip_duration_min",
@@ -234,7 +234,7 @@ def main() -> None:
     df = spark.read.parquet(input_path)
 
     stg = normalize(df, args.dataset).filter(
-        (f.col("year") == args.year) & (f.col("month") == args.month)
+        (F.col("year") == args.year) & (F.col("month") == args.month)
     )
 
     if args.dry_run:

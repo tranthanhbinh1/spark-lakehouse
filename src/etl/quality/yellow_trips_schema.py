@@ -2,7 +2,7 @@ import pandera.pyspark as pa
 import pyspark.sql.types as T
 
 
-class YellowTripsPanderaSchema(pa.DataFrameSchema):
+class YellowTripsPanderaSchema(pa.DataFrameModel):
     vendor_id: T.IntegerType() = pa.Field(nullable=False, isin=[1, 2])
     pickup_ts: T.TimestampType() = pa.Field(nullable=False)
     dropoff_ts: T.TimestampType() = pa.Field(nullable=False)
