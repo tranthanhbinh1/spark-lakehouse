@@ -1,0 +1,2 @@
+from .green_trips_schema import GreenTripsPanderaSchema
+from .yellow_trips_schema import YellowTripsPanderaSchema
