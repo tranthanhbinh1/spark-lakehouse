@@ -1,11 +1,11 @@
 import pandera.pyspark as pa
-import pyspark.sql.types as t
+import pyspark.sql.types as T
 
 
 class YellowTripsPanderaSchema(pa.DataFrameSchema):
-    vendor_id: t.IntegerType() = pa.Field(nullable=False, isin=[1, 2])
-    pickup_ts: t.TimestampType() = pa.Field(nullalble=False)
-    dropoff_ts: t.TimestampType() = pa.Field(nullable=False)
+    vendor_id: T.IntegerType() = pa.Field(nullable=False, isin=[1, 2])
+    pickup_ts: T.TimestampType() = pa.Field(nullable=False)
+    dropoff_ts: T.TimestampType() = pa.Field(nullable=False)
 
     passenger_count: T.IntegerType() = pa.Field(nullable=False, ge=1, le=6)
     trip_distance: T.FloatType() = pa.Field(nullable=False, ge=0)
