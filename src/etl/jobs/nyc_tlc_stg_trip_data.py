@@ -35,24 +35,33 @@ def with_optional_column(df: DataFrame, column: str, data_type: str) -> DataFram
 
 
 def add_trip_derivations(df: DataFrame) -> DataFrame:
-    return (
-        df.withColumn("pickup_ts", F.to_timestamp("pickup_ts"))
-        .withColumn("dropoff_ts", F.to_timestamp("dropoff_ts"))
-        .withColumn(
-            "trip_duration_min",
-            (F.col("dropoff_ts").cast("long") - F.col("pickup_ts").cast("long")) / 60.0,
-        )
-        .withColumn("year", F.year("pickup_ts"))
-        .withColumn("month", F.month("pickup_ts"))
-        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
-        .withColumn("has_tip", F.col("tip_amount") > 0)
-        .withColumn(
-            "tip_ratio",
-            F.when(
+    timestamped_df = df.withColumns(
+        {
+            "pickup_ts": F.to_timestamp("pickup_ts"),
+            "dropoff_ts": F.to_timestamp("dropoff_ts"),
+        },
+    )
+
+    derived_df = timestamped_df.withColumns(
+        {
+            "trip_duration_min": (
+                F.col("dropoff_ts").cast("long") - F.col("pickup_ts").cast("long")
+            )
+            / 60.0,
+            "year": F.year("pickup_ts"),
+            "month": F.month("pickup_ts"),
+            "has_tip": F.col("tip_amount") > 0,
+            "tip_ratio": F.when(
                 F.col("fare_amount") > 0,
                 F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
             ).otherwise(0.0),
-        )
+        },
+    )
+
+    return derived_df.withColumns(
+        {
+            "is_valid_trip": F.col("trip_duration_min") > 0,
+        },
     )
 
 
@@ -86,20 +95,18 @@ def normalize_yellow(df: DataFrame) -> DataFrame:
     normalized_df = add_trip_derivations(normalized_df)
 
     return (
-        normalized_df.withColumn(
-            "trip_duration_min", F.col("trip_duration_min").cast("float")
+        normalized_df.withColumns(
+            {
+                "trip_duration_min": F.col("trip_duration_min").cast("float"),
+                "tip_ratio": F.when(
+                    F.col("fare_amount") > 0,
+                    F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
+                )
+                .otherwise(0.0)
+                .cast("float"),
+            }
         )
-        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
-        .withColumn("has_tip", F.col("tip_amount") > 0)
-        .withColumn(
-            "tip_ratio",
-            F.when(
-                F.col("fare_amount") > 0,
-                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
-            )
-            .otherwise(0.0)
-            .cast("float"),
-        )
+        .withColumns({"is_valid_trip": F.col("trip_duration_min") > 0})
         .filter((F.col("passenger_count") > 0) & (F.col("passenger_count") <= 6))
         .select(
             F.col("vendor_id").cast("int"),
@@ -167,18 +174,17 @@ def normalize_green(df: DataFrame) -> DataFrame:
     normalized_df = add_trip_derivations(normalized_df)
 
     return (
-        normalized_df.withColumn(
-            "trip_duration_min", F.col("trip_duration_min").cast("bigint")
+        normalized_df.withColumns(
+            {
+                "trip_duration_min": F.col("trip_duration_min").cast("bigint"),
+                "has_tip": F.col("tip_amount") > 0,
+                "tip_ratio": F.when(
+                    F.col("fare_amount") > 0,
+                    F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
+                ).otherwise(0.0),
+            }
         )
-        .withColumn("is_valid_trip", F.col("trip_duration_min") > 0)
-        .withColumn("has_tip", F.col("tip_amount") > 0)
-        .withColumn(
-            "tip_ratio",
-            F.when(
-                F.col("fare_amount") > 0,
-                F.round(F.col("tip_amount") / F.col("fare_amount"), 2),
-            ).otherwise(0.0),
-        )
+        .withColumns({"is_valid_trip": F.col("trip_duration_min") > 0})
         .filter((F.col("passenger_count") > 0) & (F.col("passenger_count") <= 6))
         .select(
             "vendor_id",
