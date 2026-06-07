@@ -7,6 +7,7 @@ dependencies = [
     "apache-airflow==3.2.1",
     "apache-airflow-providers-apache-spark==6.0.1",
     "boto3==1.41.2",
+    "boto3-stubs~=1.41.2",
     "dbt-core==1.11.4",
     "ipykernel==7.1.0",
     "pandas==2.3.3",
@@ -23,4 +24,9 @@ dependencies = [
 project-includes = [
     "**/*.py*",
     "**/*.ipynb",
+]
+
+[dependency-groups]
+dev = [
+    "pyrefly>=1.0.0",
 ]
