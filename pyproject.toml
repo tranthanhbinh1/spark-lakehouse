@@ -20,6 +20,9 @@ dependencies = [
     "ruff==0.14.14",
 ]
 
+[tool.ruff]
+extend-exclude = ["notebooks"]
+
 [tool.pyrefly]
 project-includes = [
     "**/*.py*",

@@ -8,6 +8,10 @@ STATE_VAR = "yellow_trips_next_partition"
 END_VAR = "yellow_trips_end_partition"
 DEFAULT_START_PARTITION = "2011-01"
 DEFAULT_END_PARTITION = "2025-12"
+SPARK_CONF = {
+    "spark.driver.bindAddress": "0.0.0.0",
+    "spark.driver.host": "airflow-airflow-worker-1",
+}
 
 
 def _parse_partition(value: str) -> tuple[int, int]:
@@ -59,10 +63,7 @@ def yellow_trips_dag():
         task_id="stage_yellow_trips",
         application="/opt/spark/jobs/nyc_tlc_stg_trip_data.py",
         conn_id="spark",
-        conf={
-            "spark.driver.bindAddress": "0.0.0.0",
-            "spark.driver.host": "airflow-airflow-worker-1",
-        },
+        conf=SPARK_CONF,
         application_args=[
             "--dataset",
             "yellow",
@@ -75,9 +76,45 @@ def yellow_trips_dag():
         ],
     )
 
+    check_silver_quality = SparkSubmitOperator(
+        task_id="check_silver_quality",
+        application="/opt/spark/jobs/nyc_tlc_silver_quality.py",
+        conn_id="spark",
+        conf=SPARK_CONF,
+        application_args=[
+            "--dataset",
+            "yellow",
+            "--year",
+            partition["year"],
+            "--month",
+            partition["month"],
+        ],
+    )
+
+    build_gold_revenue = SparkSubmitOperator(
+        task_id="build_gold_revenue",
+        application="/opt/spark/jobs/nyc_tlc_gold_revenue.py",
+        conn_id="spark",
+        conf=SPARK_CONF,
+        application_args=[
+            "--dataset",
+            "yellow",
+            "--year",
+            partition["year"],
+            "--month",
+            partition["month"],
+        ],
+    )
+
     advance = advance_partition(partition["year"], partition["month"])
 
-    partition >> stage_partition >> advance
+    (
+        partition
+        >> stage_partition
+        >> check_silver_quality
+        >> build_gold_revenue
+        >> advance
+    )
 
 
 yellow_trips_dag()
