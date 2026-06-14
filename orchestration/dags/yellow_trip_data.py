@@ -2,6 +2,7 @@ import pendulum
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.sdk import Variable, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
+from utils.logger import logger
 
 
 STATE_VAR = "yellow_trips_next_partition"

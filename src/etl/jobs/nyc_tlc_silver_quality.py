@@ -67,6 +67,25 @@ def run_pre_checks(df: DataFrame) -> list[dict]:
     ]
 
 
+def run_validity_flag_checks(df: DataFrame) -> list[dict]:
+    expected_is_valid_trip = F.col("trip_duration_min") > 0
+    mismatch_count = df.where(
+        F.col("is_valid_trip").isNull()
+        | (F.col("is_valid_trip") != expected_is_valid_trip)
+    ).count()
+
+    return [
+        {
+            "check_name": "is_valid_trip_derivation",
+            "severity": "hard",
+            "status": "pass" if mismatch_count == 0 else "fail",
+            "observed_value": str(mismatch_count),
+            "threshold": "0 mismatches against trip_duration_min > 0",
+            "extra": None,
+        }
+    ]
+
+
 def failed_read_check(error: Exception) -> list[dict]:
     return [
         {
@@ -197,6 +216,8 @@ def main() -> int:
                 spark, args.dataset, args.year, args.month
             )
             results = run_pre_checks(silver_partition)
+            if not has_hard_failures(results):
+                results.extend(run_validity_flag_checks(silver_partition))
             if not has_hard_failures(results):
                 results.extend(run_pandera_checks(silver_partition, args.dataset))
         except Exception as error:

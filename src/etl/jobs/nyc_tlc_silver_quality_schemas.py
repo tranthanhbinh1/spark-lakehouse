@@ -26,7 +26,7 @@ class YellowTripsPanderaSchema(pa.DataFrameModel):
     congestion_surcharge: T.FloatType() = pa.Field(nullable=True)
     airport_fee: T.FloatType() = pa.Field(nullable=True)
 
-    trip_duration_min: T.FloatType() = pa.Field(nullable=False, gt=0)
+    trip_duration_min: T.FloatType() = pa.Field(nullable=False)
     year: T.IntegerType() = pa.Field(nullable=False, ge=2009)
     month: T.IntegerType() = pa.Field(nullable=False, ge=1, le=12)
 
@@ -60,7 +60,7 @@ class GreenTripsPanderaSchema(pa.DataFrameModel):
     congestion_surcharge: T.DoubleType() = pa.Field(nullable=True)
     trip_type: T.IntegerType() = pa.Field(nullable=True)
 
-    trip_duration_min: T.LongType() = pa.Field(nullable=False, gt=0)
+    trip_duration_min: T.LongType() = pa.Field(nullable=False)
     year: T.IntegerType() = pa.Field(nullable=False, ge=2014)
     month: T.IntegerType() = pa.Field(nullable=False, ge=1, le=12)
 
