@@ -1,0 +1,29 @@
+name = "onprem"
+architecture = "onprem"
+environment = "local"
+
+[airflow]
+base_url = "http://localhost:8070"
+dag_id = "taxi_benchmark_pipeline"
+auth = "token"
+username_env = "AIRFLOW_USERNAME"
+password_env = "AIRFLOW_PASSWORD"
+bearer_token_env = "AIRFLOW_BEARER_TOKEN"
+poll_interval_seconds = 10
+poll_timeout_seconds = 7200
+
+[trino]
+base_url = "http://localhost:8085"
+user = "benchmark"
+catalog = "lakehouse"
+schema = "benchmark"
+source = "lakehouse-benchmark-runner"
+request_timeout_seconds = 300
+
+[spark]
+input_base = "s3a://raw/data"
+
+[runtime]
+secret_source = "environment"
+network = "local docker compose network"
+notes = "Airflow worker runs SparkSubmitOperator in client mode; Trino reads local Iceberg catalog."

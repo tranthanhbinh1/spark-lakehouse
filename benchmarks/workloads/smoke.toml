@@ -1,0 +1,13 @@
+name = "smoke"
+pipeline_repetitions = 3
+query_repetitions = 5
+
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 1
+
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 1
