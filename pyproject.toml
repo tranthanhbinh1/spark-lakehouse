@@ -22,8 +22,11 @@ dependencies = [
 
 [tool.ruff]
 extend-exclude = ["notebooks"]
+[tool.ruff.lint]
+extend-select = ["I"]
 
 [tool.pyrefly]
+search-path = [".", "src"]
 project-includes = [
     "**/*.py*",
     "**/*.ipynb",

@@ -3,7 +3,6 @@ import argparse
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-
 GOLD_REVENUE_TABLE = "lakehouse.gold.trip_revenue_monthly"
 
 GOLD_COLUMNS = [

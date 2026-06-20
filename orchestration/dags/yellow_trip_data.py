@@ -3,7 +3,6 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 from airflow.sdk import Variable, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 
-
 STATE_VAR = "yellow_trips_next_partition"
 END_VAR = "yellow_trips_end_partition"
 DEFAULT_START_PARTITION = "2011-01"

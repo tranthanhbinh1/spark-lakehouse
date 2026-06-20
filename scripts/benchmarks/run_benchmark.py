@@ -1,21 +1,23 @@
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import sys
-import time
-import tomllib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
-import requests
+import tomllib
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
-TERMINAL_DAG_STATES = {"success", "failed"}
+from clients.airflow_client import AirflowClient  # noqa: E402
+from clients.trino_client import TrinoClient  # noqa: E402
+from clients.utils import utc_now_iso, utc_timestamp  # noqa: E402
+
 METRICS_TABLE = "lakehouse.benchmark.run_metrics"
 
 
@@ -142,14 +144,6 @@ def canonical_config_hash(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def utc_timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-
-
-def utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
 def render_benchmark_run_id(
     profile: dict[str, Any], workload: Workload, sha: str
 ) -> str:
@@ -183,178 +177,6 @@ def json_default(value: Any) -> str:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=json_default))
-
-
-class AirflowClient:
-    def __init__(self, config: dict[str, Any]) -> None:
-        self.base_url = str(config["base_url"]).rstrip("/")
-        self.dag_id = str(config["dag_id"])
-        self.session = requests.Session()
-        self.session.headers.update({"Accept": "application/json"})
-        self._configure_auth(config)
-
-    def _configure_auth(self, config: dict[str, Any]) -> None:
-        token_env = config.get("bearer_token_env")
-        if token_env and os.getenv(str(token_env)):
-            self.session.headers.update(
-                {"Authorization": f"Bearer {os.environ[str(token_env)]}"}
-            )
-            return
-
-        if config.get("auth") != "token":
-            return
-
-        username = os.getenv(str(config.get("username_env", "")))
-        password = os.getenv(str(config.get("password_env", "")))
-        if not username or not password:
-            return
-
-        response = self.session.post(
-            f"{self.base_url}/auth/token",
-            json={"username": username, "password": password},
-            timeout=30,
-        )
-        response.raise_for_status()
-        token = response.json()["access_token"]
-        self.session.headers.update({"Authorization": f"Bearer {token}"})
-
-    def trigger_dag_run(self, dag_run_id: str, conf: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.base_url}/api/v2/dags/{quote(self.dag_id)}/dagRuns"
-        payload = {
-            "dag_run_id": dag_run_id,
-            "logical_date": utc_now_iso(),
-            "conf": conf,
-        }
-        response = self.session.post(url, json=payload, timeout=30)
-        if response.status_code == 400:
-            payload = {
-                "run_id": dag_run_id,
-                "logical_date": utc_now_iso(),
-                "conf": conf,
-            }
-            response = self.session.post(url, json=payload, timeout=30)
-        if response.status_code >= 400:
-            raise RuntimeError(
-                "Airflow DAG-run creation failed: "
-                f"{response.status_code} {response.text}"
-            )
-        return response.json()
-
-    def get_dag_run(self, dag_run_id: str) -> dict[str, Any]:
-        url = (
-            f"{self.base_url}/api/v2/dags/{quote(self.dag_id)}/dagRuns/"
-            f"{quote(dag_run_id, safe='')}"
-        )
-        response = self.session.get(url, timeout=30)
-        response.raise_for_status()
-        return response.json()
-
-    def wait_for_dag_run(
-        self, dag_run_id: str, poll_interval: int, poll_timeout: int
-    ) -> dict[str, Any]:
-        deadline = time.monotonic() + poll_timeout
-        while time.monotonic() < deadline:
-            dag_run = self.get_dag_run(dag_run_id)
-            state = str(dag_run.get("state", "")).lower()
-            if state in TERMINAL_DAG_STATES:
-                return dag_run
-            time.sleep(poll_interval)
-        raise TimeoutError(f"Timed out waiting for DAG run: {dag_run_id}")
-
-    def list_task_instances(self, dag_run_id: str) -> list[dict[str, Any]]:
-        url = (
-            f"{self.base_url}/api/v2/dags/{quote(self.dag_id)}/dagRuns/"
-            f"{quote(dag_run_id, safe='')}/taskInstances"
-        )
-        response = self.session.get(url, timeout=30)
-        response.raise_for_status()
-        payload = response.json()
-        return list(payload.get("task_instances", payload.get("taskInstances", [])))
-
-    def fetch_task_log(
-        self, dag_run_id: str, task_id: str, try_number: int
-    ) -> dict[str, Any]:
-        v2_url = (
-            f"{self.base_url}/api/v2/dags/{quote(self.dag_id)}/dagRuns/"
-            f"{quote(dag_run_id, safe='')}/taskInstances/{quote(task_id)}/logs/"
-            f"{try_number}?full_content=true"
-        )
-        response = self.session.get(v2_url, timeout=30)
-        if response.status_code == 404:
-            v1_url = (
-                f"{self.base_url}/api/v1/dags/{quote(self.dag_id)}/dagRuns/"
-                f"{quote(dag_run_id, safe='')}/taskInstances/{quote(task_id)}/logs/"
-                f"{try_number}?full_content=true"
-            )
-            response = self.session.get(v1_url, timeout=30)
-        if response.status_code == 404:
-            return {"available": False, "status_code": 404}
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "")
-        if "application/json" in content_type:
-            payload = response.json()
-            content = str(payload.get("content", ""))
-        else:
-            payload = {"content": response.text}
-            content = response.text
-        return {
-            "available": True,
-            "status_code": response.status_code,
-            "content_length": len(content),
-            "content_tail": content[-4000:],
-            "payload": payload if len(content) <= 4000 else None,
-        }
-
-
-class TrinoClient:
-    def __init__(self, config: dict[str, Any]) -> None:
-        self.base_url = str(config["base_url"]).rstrip("/")
-        self.timeout = int(config.get("request_timeout_seconds", 300))
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "X-Trino-User": str(config.get("user", "benchmark")),
-                "X-Trino-Catalog": str(config.get("catalog", "lakehouse")),
-                "X-Trino-Schema": str(config.get("schema", "benchmark")),
-                "X-Trino-Source": str(
-                    config.get("source", "lakehouse-benchmark-runner")
-                ),
-            }
-        )
-
-    def execute(self, sql: str) -> dict[str, Any]:
-        started_at = time.monotonic()
-        response = self.session.post(
-            f"{self.base_url}/v1/statement",
-            data=sql.encode(),
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        pages = [payload]
-        rows = list(payload.get("data", []))
-        while payload.get("nextUri"):
-            response = self.session.get(payload["nextUri"], timeout=self.timeout)
-            response.raise_for_status()
-            payload = response.json()
-            pages.append(payload)
-            rows.extend(payload.get("data", []))
-
-        final = pages[-1]
-        stats = final.get("stats", {})
-        error = final.get("error")
-        return {
-            "query_id": final.get("id") or pages[0].get("id"),
-            "state": stats.get("state", "FAILED" if error else "FINISHED"),
-            "duration_seconds": time.monotonic() - started_at,
-            "rows": rows,
-            "row_count": len(rows),
-            "processed_rows": stats.get("processedRows"),
-            "processed_bytes": stats.get("processedBytes"),
-            "elapsed_time": stats.get("elapsedTime"),
-            "error": error,
-            "pages": pages,
-        }
 
 
 def sql_literal(value: Any) -> str:
@@ -507,7 +329,8 @@ def query_metric(
     return {
         **base,
         "metric_id": (
-            f"{base['dag_run_id']}__query__{query.name}__qr{query_repetition:02d}"
+            f"{base['benchmark_run_id']}__{base['dataset']}_{base['year']}_"
+            f"{base['month']:02d}__query__{query.name}__qr{query_repetition:02d}"
         ),
         "metric_type": "trino_query",
         "task_id": None,
@@ -555,6 +378,33 @@ def base_metric(
     }
 
 
+def query_base_metric(
+    benchmark_run_id: str,
+    profile: dict[str, Any],
+    workload: Workload,
+    partition: Partition,
+    query_repetition: int,
+    dag_id: str,
+    git_sha: str,
+    config_hash: str,
+) -> dict[str, Any]:
+    return {
+        "benchmark_run_id": benchmark_run_id,
+        "architecture": profile["architecture"],
+        "environment": profile["environment"],
+        "workload_name": workload.name,
+        "dag_id": dag_id,
+        "dag_run_id": None,
+        "dataset": partition.dataset,
+        "year": partition.year,
+        "month": partition.month,
+        "repetition": query_repetition,
+        "git_sha": git_sha,
+        "config_hash": config_hash,
+        "processed_at": utc_now_iso(),
+    }
+
+
 def rendered_runs(
     benchmark_run_id: str, workload: Workload, profile: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -593,13 +443,16 @@ def dry_run_payload(
     rendered_queries = []
     for partition in workload.partitions:
         for query in queries:
-            rendered_queries.append(
-                {
-                    "partition": partition.__dict__,
-                    "query_name": query.name,
-                    "sql": render_query_sql(query, partition),
-                }
-            )
+            sql = render_query_sql(query, partition)
+            for query_repetition in range(1, workload.query_repetitions + 1):
+                rendered_queries.append(
+                    {
+                        "partition": partition.__dict__,
+                        "query_name": query.name,
+                        "query_repetition": query_repetition,
+                        "sql": sql,
+                    }
+                )
 
     return {
         "dry_run": True,
@@ -630,6 +483,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     benchmark_run_id = render_benchmark_run_id(profile, workload, git_sha)
     artifact_dir = args.artifact_root / benchmark_run_id
     artifact_path = artifact_dir / "benchmark_run.json"
+    payload: dict[str, Any]
 
     if args.dry_run:
         payload = dry_run_payload(
@@ -693,15 +547,27 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             task_metric(base, task, artifact_path) for task in task_instances
         )
 
+    for partition in workload.partitions:
         for query in queries:
             sql = render_query_sql(query, partition)
             for query_repetition in range(1, workload.query_repetitions + 1):
+                query_base = query_base_metric(
+                    benchmark_run_id,
+                    profile,
+                    workload,
+                    partition,
+                    query_repetition,
+                    dag_id,
+                    git_sha,
+                    config_hash,
+                )
                 query_started_at = utc_now_iso()
                 result = trino.execute(sql)
                 query_finished_at = utc_now_iso()
                 query_results.append(
                     {
-                        "dag_run_id": dag_run_id,
+                        "dag_run_id": None,
+                        "partition": partition.__dict__,
                         "query_name": query.name,
                         "query_repetition": query_repetition,
                         "sql": sql,
@@ -710,7 +576,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 metrics.append(
                     query_metric(
-                        base,
+                        query_base,
                         query,
                         query_repetition,
                         result,

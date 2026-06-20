@@ -2,7 +2,6 @@ import pendulum
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.sdk import dag
 
-
 SPARK_CONF = {
     "spark.driver.bindAddress": "0.0.0.0",
     "spark.driver.host": "airflow-airflow-worker-1",

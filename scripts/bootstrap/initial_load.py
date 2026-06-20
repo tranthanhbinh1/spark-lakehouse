@@ -1,6 +1,7 @@
-import requests
 import os
 from multiprocessing import Pool
+
+import requests
 
 
 def _execute_task(args):
