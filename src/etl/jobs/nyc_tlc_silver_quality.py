@@ -7,15 +7,16 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-from .nyc_tlc_silver_quality_schemas import (
+from etl.schemas.nyc_tlc_silver_quality_schemas import (
     GreenTripsPanderaSchema,
     YellowTripsPanderaSchema,
 )
 
-QUALITY_RESULTS_TABLE = "lakehouse.quality.silver_trip_quality_results"
-
 QUALITY_RESULTS_SCHEMA = T.StructType(
     [
+        T.StructField("benchmark_run_id", T.StringType(), nullable=True),
+        T.StructField("dag_run_id", T.StringType(), nullable=False),
+        T.StructField("repetition", T.IntegerType(), nullable=True),
         T.StructField("dataset", T.StringType(), nullable=False),
         T.StructField("year", T.IntegerType(), nullable=False),
         T.StructField("month", T.IntegerType(), nullable=False),
@@ -35,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", choices=["yellow", "green"], required=True)
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
+    parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--benchmark-run-id")
+    parser.add_argument("--dag-run-id", required=True)
+    parser.add_argument("--repetition", type=int)
+    parser.add_argument("--application-name")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -50,9 +56,9 @@ def build_spark(app_name: str) -> SparkSession:
 
 
 def read_silver_partition(
-    spark: SparkSession, dataset: str, year: int, month: int
+    spark: SparkSession, catalog: str, dataset: str, year: int, month: int
 ) -> DataFrame:
-    table = f"lakehouse.silver.{dataset}_trips"
+    table = f"{catalog}.silver.{dataset}_trips"
     return spark.table(table).where((F.col("year") == year) & (F.col("month") == month))
 
 
@@ -154,12 +160,21 @@ def run_pandera_checks(df: DataFrame, dataset: str) -> list[dict]:
 
 
 def with_audit_fields(
-    results: list[dict], dataset: str, year: int, month: int
+    results: list[dict],
+    dataset: str,
+    year: int,
+    month: int,
+    benchmark_run_id: str | None,
+    dag_run_id: str,
+    repetition: int | None,
 ) -> list[dict]:
     processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     return [
         {
+            "benchmark_run_id": benchmark_run_id,
+            "dag_run_id": dag_run_id,
+            "repetition": repetition,
             "dataset": dataset,
             "year": year,
             "month": month,
@@ -175,9 +190,9 @@ def with_audit_fields(
     ]
 
 
-def write_results(spark: SparkSession, rows: list[dict]) -> None:
+def write_results(spark: SparkSession, table: str, rows: list[dict]) -> None:
     results_df = spark.createDataFrame(rows, schema=QUALITY_RESULTS_SCHEMA)
-    results_df.writeTo(QUALITY_RESULTS_TABLE).append()
+    results_df.writeTo(table).append()
 
 
 def has_hard_failures(results: list[dict]) -> bool:
@@ -193,9 +208,11 @@ def print_dry_run(
     dataset: str,
     year: int,
     month: int,
+    catalog: str,
+    quality_results_table: str,
 ) -> None:
-    print(f"Quality target table: {QUALITY_RESULTS_TABLE}")
-    print(f"Silver source table: lakehouse.silver.{dataset}_trips")
+    print(f"Quality target table: {quality_results_table}")
+    print(f"Silver source table: {catalog}.silver.{dataset}_trips")
     print(f"Silver partition: dataset={dataset}, year={year}, month={month}")
     if df is not None:
         df.printSchema()
@@ -204,15 +221,17 @@ def print_dry_run(
 
 def main() -> int:
     args = parse_args()
-    spark = build_spark(
+    default_app_name = (
         f"nyc-tlc-silver-quality-{args.dataset}-{args.year}-{args.month:02d}"
     )
+    spark = build_spark(args.application_name or default_app_name)
+    quality_results_table = f"{args.catalog}.quality.silver_trip_quality_results"
 
     silver_partition = None
     try:
         try:
             silver_partition = read_silver_partition(
-                spark, args.dataset, args.year, args.month
+                spark, args.catalog, args.dataset, args.year, args.month
             )
             results = run_pre_checks(silver_partition)
             if not has_hard_failures(results):
@@ -222,7 +241,15 @@ def main() -> int:
         except Exception as error:
             results = failed_read_check(error)
 
-        audit_rows = with_audit_fields(results, args.dataset, args.year, args.month)
+        audit_rows = with_audit_fields(
+            results,
+            args.dataset,
+            args.year,
+            args.month,
+            args.benchmark_run_id,
+            args.dag_run_id,
+            args.repetition,
+        )
 
         if args.dry_run:
             print_dry_run(
@@ -231,9 +258,11 @@ def main() -> int:
                 args.dataset,
                 args.year,
                 args.month,
+                args.catalog,
+                quality_results_table,
             )
         else:
-            write_results(spark, audit_rows)
+            write_results(spark, quality_results_table, audit_rows)
 
         return 1 if has_hard_failures(results) else 0
     finally:

@@ -3,8 +3,6 @@ import argparse
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-GOLD_REVENUE_TABLE = "lakehouse.gold.trip_revenue_monthly"
-
 GOLD_COLUMNS = [
     "dataset",
     "year",
@@ -29,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", choices=["yellow", "green"], required=True)
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
+    parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--benchmark-run-id")
+    parser.add_argument("--dag-run-id", required=True)
+    parser.add_argument("--repetition", type=int)
+    parser.add_argument("--application-name")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -44,9 +47,9 @@ def build_spark(app_name: str) -> SparkSession:
 
 
 def read_silver_partition(
-    spark: SparkSession, dataset: str, year: int, month: int
+    spark: SparkSession, catalog: str, dataset: str, year: int, month: int
 ) -> DataFrame:
-    table = f"lakehouse.silver.{dataset}_trips"
+    table = f"{catalog}.silver.{dataset}_trips"
     return spark.table(table).where((F.col("year") == year) & (F.col("month") == month))
 
 
@@ -93,13 +96,15 @@ def aggregate_revenue(df: DataFrame, dataset: str, year: int, month: int) -> Dat
 
 def main() -> None:
     args = parse_args()
-    spark = build_spark(
+    default_app_name = (
         f"nyc-tlc-gold-revenue-{args.dataset}-{args.year}-{args.month:02d}"
     )
+    spark = build_spark(args.application_name or default_app_name)
+    gold_revenue_table = f"{args.catalog}.gold.trip_revenue_monthly"
 
     try:
         silver_partition = read_silver_partition(
-            spark, args.dataset, args.year, args.month
+            spark, args.catalog, args.dataset, args.year, args.month
         )
         source_count = silver_partition.count()
         if source_count == 0:
@@ -113,8 +118,8 @@ def main() -> None:
         )
 
         if args.dry_run:
-            print(f"Gold target table: {GOLD_REVENUE_TABLE}")
-            print(f"Silver source table: lakehouse.silver.{args.dataset}_trips")
+            print(f"Gold target table: {gold_revenue_table}")
+            print(f"Silver source table: {args.catalog}.silver.{args.dataset}_trips")
             print(
                 "Silver partition: "
                 f"dataset={args.dataset}, year={args.year}, month={args.month}"
@@ -124,7 +129,7 @@ def main() -> None:
             revenue.show(truncate=False)
             return
 
-        revenue.writeTo(GOLD_REVENUE_TABLE).overwritePartitions()
+        revenue.writeTo(gold_revenue_table).overwritePartitions()
     finally:
         spark.stop()
 

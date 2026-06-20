@@ -10,6 +10,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--input-base", default="s3a://raw/data")
+    parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--benchmark-run-id")
+    parser.add_argument("--dag-run-id", required=True)
+    parser.add_argument("--repetition", type=int)
+    parser.add_argument("--application-name")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -228,14 +233,15 @@ def normalize(df: DataFrame, dataset: str) -> DataFrame:
 def main() -> None:
     args = parse_args()
 
-    spark = build_spark(f"nyc-tlc-stg-{args.dataset}-{args.year}-{args.month:02d}")
+    default_app_name = f"nyc-tlc-stg-{args.dataset}-{args.year}-{args.month:02d}"
+    spark = build_spark(args.application_name or default_app_name)
 
     input_path = (
         f"{args.input_base}/{args.year}/"
         f"{args.dataset}_tripdata_{args.year}-{args.month:02d}.parquet"
     )
 
-    target_table = f"lakehouse.silver.{args.dataset}_trips"
+    target_table = f"{args.catalog}.silver.{args.dataset}_trips"
 
     df = spark.read.parquet(input_path)
 

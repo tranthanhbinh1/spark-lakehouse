@@ -1,10 +1,25 @@
+import logging
+
 import pendulum
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.sdk import Variable, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
-from utils.common import format_partition, next_partition, parse_partition
 
-from utils.logger import logger
+logger = logging.getLogger(__name__)
+
+
+def parse_partition(value: str) -> tuple[int, int]:
+    year, month = value.split("-", maxsplit=1)
+    return int(year), int(month)
+
+
+def format_partition(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+
+def next_partition(year: int, month: int) -> tuple[int, int]:
+    return (year + 1, 1) if month == 12 else (year, month + 1)
+
 
 STATE_VAR = "green_trips_next_partition"
 END_VAR = "green_trips_end_partition"
@@ -79,8 +94,9 @@ def green_trips_dag():
 
     stage_partition = SparkSubmitOperator(
         task_id="stage_green_trips",
-        application="/opt/spark/jobs/nyc_tlc_stg_trip_data.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_stg_trip_data.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__green__stage",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -89,6 +105,10 @@ def green_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
             "--input-base",
             "s3a://raw/data",
         ],
@@ -96,8 +116,9 @@ def green_trips_dag():
 
     check_silver_quality = SparkSubmitOperator(
         task_id="check_silver_quality",
-        application="/opt/spark/jobs/nyc_tlc_silver_quality.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_silver_quality.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__green__quality",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -106,13 +127,18 @@ def green_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
         ],
     )
 
     build_gold_revenue = SparkSubmitOperator(
         task_id="build_gold_revenue",
-        application="/opt/spark/jobs/nyc_tlc_gold_revenue.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_gold_revenue.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__green__gold",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -121,6 +147,10 @@ def green_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
         ],
     )
 

@@ -60,8 +60,9 @@ def yellow_trips_dag():
 
     stage_partition = SparkSubmitOperator(
         task_id="stage_yellow_trips",
-        application="/opt/spark/jobs/nyc_tlc_stg_trip_data.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_stg_trip_data.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__yellow__stage",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -70,6 +71,10 @@ def yellow_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
             "--input-base",
             "s3a://raw/data",
         ],
@@ -77,8 +82,9 @@ def yellow_trips_dag():
 
     check_silver_quality = SparkSubmitOperator(
         task_id="check_silver_quality",
-        application="/opt/spark/jobs/nyc_tlc_silver_quality.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_silver_quality.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__yellow__quality",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -87,13 +93,18 @@ def yellow_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
         ],
     )
 
     build_gold_revenue = SparkSubmitOperator(
         task_id="build_gold_revenue",
-        application="/opt/spark/jobs/nyc_tlc_gold_revenue.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_gold_revenue.py",
         conn_id="spark",
+        name="sim__{{ run_id }}__yellow__gold",
         conf=SPARK_CONF,
         application_args=[
             "--dataset",
@@ -102,6 +113,10 @@ def yellow_trips_dag():
             partition["year"],
             "--month",
             partition["month"],
+            "--catalog",
+            "lakehouse",
+            "--dag-run-id",
+            "{{ run_id }}",
         ],
     )
 

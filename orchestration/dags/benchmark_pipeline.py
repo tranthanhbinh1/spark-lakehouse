@@ -23,9 +23,10 @@ def conf_value(key: str) -> str:
 def taxi_benchmark_pipeline():
     stage_partition = SparkSubmitOperator(
         task_id="stage_trips",
-        application="/opt/spark/jobs/nyc_tlc_stg_trip_data.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_stg_trip_data.py",
         conn_id="spark",
         conf=SPARK_CONF,
+        name=conf_value("application_name_stage"),
         application_args=[
             "--dataset",
             conf_value("dataset"),
@@ -35,14 +36,23 @@ def taxi_benchmark_pipeline():
             conf_value("month"),
             "--input-base",
             conf_value("input_base"),
+            "--catalog",
+            conf_value("catalog"),
+            "--benchmark-run-id",
+            conf_value("benchmark_run_id"),
+            "--dag-run-id",
+            "{{ run_id }}",
+            "--repetition",
+            conf_value("repetition"),
         ],
     )
 
     check_silver_quality = SparkSubmitOperator(
         task_id="check_silver_quality",
-        application="/opt/spark/jobs/nyc_tlc_silver_quality.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_silver_quality.py",
         conn_id="spark",
         conf=SPARK_CONF,
+        name=conf_value("application_name_quality"),
         application_args=[
             "--dataset",
             conf_value("dataset"),
@@ -50,14 +60,23 @@ def taxi_benchmark_pipeline():
             conf_value("year"),
             "--month",
             conf_value("month"),
+            "--catalog",
+            conf_value("catalog"),
+            "--benchmark-run-id",
+            conf_value("benchmark_run_id"),
+            "--dag-run-id",
+            "{{ run_id }}",
+            "--repetition",
+            conf_value("repetition"),
         ],
     )
 
     build_gold_revenue = SparkSubmitOperator(
         task_id="build_gold_revenue",
-        application="/opt/spark/jobs/nyc_tlc_gold_revenue.py",
+        application="/opt/lakehouse/src/etl/jobs/nyc_tlc_gold_revenue.py",
         conn_id="spark",
         conf=SPARK_CONF,
+        name=conf_value("application_name_gold"),
         application_args=[
             "--dataset",
             conf_value("dataset"),
@@ -65,6 +84,14 @@ def taxi_benchmark_pipeline():
             conf_value("year"),
             "--month",
             conf_value("month"),
+            "--catalog",
+            conf_value("catalog"),
+            "--benchmark-run-id",
+            conf_value("benchmark_run_id"),
+            "--dag-run-id",
+            "{{ run_id }}",
+            "--repetition",
+            conf_value("repetition"),
         ],
     )
 

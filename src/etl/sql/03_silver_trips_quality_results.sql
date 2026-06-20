@@ -1,4 +1,7 @@
 create table if not exists lakehouse.quality.silver_trip_quality_results (
+    benchmark_run_id string,
+    dag_run_id string,
+    repetition int,
     dataset string,
     year int,
     month int, 

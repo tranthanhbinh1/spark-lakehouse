@@ -1,6 +1,10 @@
 name = "onprem"
 architecture = "onprem"
 environment = "local"
+data_catalog = "lakehouse"
+metrics_table = "lakehouse.benchmark.run_metrics"
+history_server_base_url = "http://localhost:18080"
+cache_state = "uncontrolled"
 
 [airflow]
 base_url = "http://localhost:8070"
@@ -24,6 +28,10 @@ request_timeout_seconds = 300
 input_base = "s3a://raw/data"
 
 [runtime]
+airflow_worker_container = "airflow-airflow-worker-1"
+spark_master_container = "spark-master"
+spark_history_container = "spark-history"
+trino_container = "trino-coordinator"
 secret_source = "environment"
 network = "local docker compose network"
 notes = "Airflow worker runs SparkSubmitOperator in client mode; Trino reads local Iceberg catalog."

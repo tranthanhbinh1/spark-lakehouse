@@ -39,6 +39,15 @@ class TrinoClient:
             rows.extend(payload.get("data", []))
 
         final = pages[-1]
+        columns = next(
+            (page.get("columns") for page in pages if page.get("columns")), []
+        )
+        column_names = [column["name"] for column in columns]
+        row_dicts = (
+            [dict(zip(column_names, row, strict=True)) for row in rows]
+            if column_names
+            else []
+        )
         stats = final.get("stats", {})
         error = final.get("error")
         return {
@@ -46,6 +55,7 @@ class TrinoClient:
             "state": stats.get("state", "FAILED" if error else "FINISHED"),
             "duration_seconds": time.monotonic() - started_at,
             "rows": rows,
+            "row_dicts": row_dicts,
             "row_count": len(rows),
             "processed_rows": stats.get("processedRows"),
             "processed_bytes": stats.get("processedBytes"),
