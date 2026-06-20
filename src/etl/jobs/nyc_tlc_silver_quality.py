@@ -7,6 +7,11 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
+from .nyc_tlc_silver_quality_schemas import (
+    GreenTripsPanderaSchema,
+    YellowTripsPanderaSchema,
+)
+
 QUALITY_RESULTS_TABLE = "lakehouse.quality.silver_trip_quality_results"
 
 QUALITY_RESULTS_SCHEMA = T.StructType(
@@ -99,11 +104,6 @@ def failed_read_check(error: Exception) -> list[dict]:
 
 
 def schema_for_dataset(dataset: str):
-    from nyc_tlc_silver_quality_schemas import (
-        GreenTripsPanderaSchema,
-        YellowTripsPanderaSchema,
-    )
-
     if dataset == "yellow":
         return YellowTripsPanderaSchema
     if dataset == "green":
