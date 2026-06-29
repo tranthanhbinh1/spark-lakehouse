@@ -44,6 +44,8 @@ def taxi_benchmark_pipeline():
             "{{ run_id }}",
             "--repetition",
             conf_value("repetition"),
+            "--application-name",
+            conf_value("application_name_stage"),
         ],
     )
 
@@ -68,6 +70,8 @@ def taxi_benchmark_pipeline():
             "{{ run_id }}",
             "--repetition",
             conf_value("repetition"),
+            "--application-name",
+            conf_value("application_name_quality"),
         ],
     )
 
@@ -92,6 +96,8 @@ def taxi_benchmark_pipeline():
             "{{ run_id }}",
             "--repetition",
             conf_value("repetition"),
+            "--application-name",
+            conf_value("application_name_gold"),
         ],
     )
 

@@ -1,3 +1,6 @@
+-- Legacy one-time migration only. Fresh environments use src/etl/sql/05_benchmark_run_metrics.sql.
+-- Do not run this after the current create-table DDL; these columns already exist.
+
 alter table lakehouse.benchmark.run_metrics
 add columns (
     result_rows bigint,

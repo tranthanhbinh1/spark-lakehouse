@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--catalog", default="lakehouse")
     parser.add_argument("--benchmark-run-id")
-    parser.add_argument("--dag-run-id", required=True)
+    parser.add_argument("--dag-run-id")
     parser.add_argument("--repetition", type=int)
     parser.add_argument("--application-name")
     parser.add_argument("--dry-run", action="store_true")
@@ -96,6 +96,7 @@ def aggregate_revenue(df: DataFrame, dataset: str, year: int, month: int) -> Dat
 
 def main() -> None:
     args = parse_args()
+    args.dag_run_id = args.dag_run_id or f"manual__gold__{args.dataset}_{args.year}_{args.month:02d}"
     default_app_name = (
         f"nyc-tlc-gold-revenue-{args.dataset}-{args.year}-{args.month:02d}"
     )

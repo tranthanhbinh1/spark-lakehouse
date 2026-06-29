@@ -77,6 +77,8 @@ def yellow_trips_dag():
             "{{ run_id }}",
             "--input-base",
             "s3a://raw/data",
+            "--application-name",
+            "sim__{{ run_id }}__yellow__stage",
         ],
     )
 
@@ -97,6 +99,8 @@ def yellow_trips_dag():
             "lakehouse",
             "--dag-run-id",
             "{{ run_id }}",
+            "--application-name",
+            "sim__{{ run_id }}__yellow__quality",
         ],
     )
 
@@ -117,6 +121,8 @@ def yellow_trips_dag():
             "lakehouse",
             "--dag-run-id",
             "{{ run_id }}",
+            "--application-name",
+            "sim__{{ run_id }}__yellow__gold",
         ],
     )
 

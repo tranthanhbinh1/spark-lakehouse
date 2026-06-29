@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,6 +19,27 @@ class SparkHistoryClient:
         return response.json()
 
     def find_completed_application(
+        self,
+        name: str,
+        started_at: str | None,
+        finished_at: str | None,
+        wait_seconds: int = 60,
+        poll_seconds: int = 2,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + wait_seconds
+        last_error: LookupError | None = None
+        while True:
+            try:
+                return self._find_completed_application_once(
+                    name, started_at, finished_at
+                )
+            except LookupError as error:
+                last_error = error
+                if time.monotonic() >= deadline:
+                    raise last_error
+                time.sleep(poll_seconds)
+
+    def _find_completed_application_once(
         self, name: str, started_at: str | None, finished_at: str | None
     ) -> dict[str, Any]:
         applications = self._get("applications", status="completed")

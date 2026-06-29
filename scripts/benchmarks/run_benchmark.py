@@ -64,6 +64,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--benchmark-run-id",
+        help="Override the generated benchmark_run_id for a new benchmark execution.",
+    )
+    parser.add_argument(
+        "--insert-metrics-from-artifact",
+        type=Path,
+        help="Reload metrics from an existing benchmark_run.json without rerunning the benchmark.",
+    )
+    parser.add_argument(
         "--skip-metrics-insert",
         action="store_true",
         help="Run Airflow and Trino but do not insert normalized metrics.",
@@ -183,6 +192,10 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=json_default))
 
 
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text())
+
+
 def sql_literal(value: Any) -> str:
     if value is None:
         return "NULL"
@@ -261,6 +274,21 @@ def metric_insert_sql(metrics_table: str, metrics: list[dict[str, Any]]) -> str:
         + ", ".join(columns)
         + ") values\n"
         + ",\n".join(rows)
+    )
+
+
+def require_trino_success(result: dict[str, Any], label: str) -> dict[str, Any]:
+    state = str(result.get("state", "")).upper()
+    error = result.get("error")
+    if state == "FINISHED" and not error:
+        return result
+
+    message = None
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("errorName")
+    raise RuntimeError(
+        f"Trino operation failed: {label}; "
+        f"query_id={result.get('query_id')}; state={state}; error={message or error}"
     )
 
 
@@ -375,7 +403,10 @@ def iceberg_partition_metric(
     row = rows[0] if rows else {}
     return {
         **base,
-        "metric_id": f"{base['benchmark_run_id']}__{base['dataset']}_{base['year']}_{base['month']:02d}__iceberg__{table_name}",
+        "metric_id": (
+            f"{base['benchmark_run_id']}__{base['dataset']}_{base['year']}_"
+            f"{base['month']:02d}__iceberg__{table_name}__r{base['repetition']:02d}"
+        ),
         "metric_type": "iceberg_partition",
         "task_id": None,
         "query_name": None,
@@ -387,6 +418,65 @@ def iceberg_partition_metric(
         "data_size_bytes": row.get("total_size"),
         "artifact_path": str(artifact_path),
     }
+
+
+def iceberg_partition_queries(
+    profile: dict[str, Any], partition: Partition
+) -> list[dict[str, str]]:
+    catalog = str(profile["data_catalog"])
+    dataset_literal = sql_literal(partition.dataset)
+    return [
+        {
+            "table_name": f"{catalog}.silver.{partition.dataset}_trips",
+            "sql": (
+                "SELECT sum(record_count) AS record_count, "
+                "sum(file_count) AS file_count, "
+                "sum(total_size) AS total_size "
+                f'FROM "{catalog}".silver."{partition.dataset}_trips$partitions" '
+                f"WHERE partition.year = {partition.year} "
+                f"AND partition.month = {partition.month}"
+            ),
+        },
+        {
+            "table_name": f"{catalog}.gold.trip_revenue_monthly",
+            "sql": (
+                "SELECT sum(record_count) AS record_count, "
+                "sum(file_count) AS file_count, "
+                "sum(total_size) AS total_size "
+                f'FROM "{catalog}".gold."trip_revenue_monthly$partitions" '
+                f"WHERE partition.dataset = {dataset_literal} "
+                f"AND partition.year = {partition.year} "
+                f"AND partition.month = {partition.month}"
+            ),
+        },
+    ]
+
+
+def validate_repeated_write_consistency(metrics: list[dict[str, Any]]) -> None:
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for metric in metrics:
+        if metric.get("metric_type") != "iceberg_partition":
+            continue
+        key = (
+            metric.get("table_name"),
+            metric.get("dataset"),
+            metric.get("year"),
+            metric.get("month"),
+        )
+        grouped.setdefault(key, []).append(metric)
+
+    for key, rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        reference = rows[0]
+        for row in rows[1:]:
+            for column in ("records_read", "file_count"):
+                if row.get(column) != reference.get(column):
+                    raise ValueError(
+                        "Repeated write consistency failed for "
+                        f"{key}: {column} changed from "
+                        f"{reference.get(column)} to {row.get(column)}"
+                    )
 
 
 def environment_snapshot(profile: dict[str, Any]) -> dict[str, Any]:
@@ -577,19 +667,62 @@ def dry_run_payload(
     }
 
 
+def insert_metrics_from_artifact(
+    artifact_path: Path, profile: dict[str, Any], trino: TrinoClient
+) -> dict[str, Any]:
+    payload = read_json(artifact_path)
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, list) or not metrics:
+        raise ValueError(f"Artifact has no metrics to insert: {artifact_path}")
+
+    metric_ids = [str(metric["metric_id"]) for metric in metrics]
+    if len(metric_ids) != len(set(metric_ids)):
+        raise ValueError("Artifact metric_id values are not unique")
+
+    benchmark_run_id = str(payload["benchmark_run_id"])
+    metrics_table = str(profile["metrics_table"])
+    require_trino_success(
+        trino.execute(
+            f"delete from {metrics_table} "
+            f"where benchmark_run_id = {sql_literal(benchmark_run_id)}"
+        ),
+        f"delete metrics for {benchmark_run_id}",
+    )
+    insert_result = require_trino_success(
+        trino.execute(metric_insert_sql(metrics_table, metrics)),
+        f"insert metrics for {benchmark_run_id}",
+    )
+    payload["metrics_insert"] = insert_result
+    write_json(artifact_path, payload)
+    return payload
+
+
 def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     workload = load_workload(args.workload)
     profile = load_toml(args.profile)
     cache_state = str(profile.get("cache_state", "uncontrolled"))
     if cache_state not in {"uncontrolled", "warm", "cold"}:
         raise ValueError(f"Unsupported cache_state: {cache_state}")
+    if cache_state != "uncontrolled":
+        raise ValueError(
+            "cache_state values 'warm' and 'cold' require an automated "
+            "warm-up/restart protocol; use cache_state='uncontrolled' for now"
+        )
     queries = load_queries(args.queries_dir)
     git_sha = git_short_sha()
     config_hash = canonical_config_hash(workload, profile, queries)
-    benchmark_run_id = render_benchmark_run_id(profile, workload, git_sha)
+    benchmark_run_id = args.benchmark_run_id or render_benchmark_run_id(
+        profile, workload, git_sha
+    )
     artifact_dir = args.artifact_root / benchmark_run_id
     artifact_path = artifact_dir / "benchmark_run.json"
     payload: dict[str, Any]
+
+    if args.insert_metrics_from_artifact:
+        trino = TrinoClient(profile["trino"])
+        return insert_metrics_from_artifact(
+            args.insert_metrics_from_artifact, profile, trino
+        )
 
     if args.dry_run:
         payload = dry_run_payload(
@@ -614,171 +747,180 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     poll_timeout = int(profile["airflow"].get("poll_timeout_seconds", 7200))
     dag_id = str(profile["airflow"]["dag_id"])
 
-    for run in rendered_runs(benchmark_run_id, workload, profile):
-        partition = run["partition"]
-        repetition = int(run["repetition"])
-        dag_run_id = str(run["dag_run_id"])
-        base = base_metric(
-            benchmark_run_id,
-            profile,
-            workload,
-            partition,
-            repetition,
-            dag_id,
-            dag_run_id,
-            git_sha,
-            config_hash,
-        )
+    def current_payload() -> dict[str, Any]:
+        return {
+            "dry_run": False,
+            "benchmark_run_id": benchmark_run_id,
+            "workload_path": str(workload.path),
+            "profile_path": str(args.profile),
+            "query_paths": [str(query.path) for query in queries],
+            "git_sha": git_sha,
+            "config_hash": config_hash,
+            "dag_results": dag_results,
+            "query_results": query_results,
+            "metrics": metrics,
+        }
 
-        trigger_response = airflow.trigger_dag_run(dag_run_id, run["conf"])
-        dag_run = airflow.wait_for_dag_run(dag_run_id, poll_interval, poll_timeout)
-        task_instances = airflow.list_task_instances(dag_run_id)
-        task_logs = {}
-        for task in task_instances:
-            task_id = str(task.get("task_id") or task.get("taskId"))
-            try_number = int(task.get("try_number") or task.get("tryNumber") or 1)
-            task_logs[task_id] = airflow.fetch_task_log(dag_run_id, task_id, try_number)
-
-        dag_results.append(
-            {
-                "dag_run_id": dag_run_id,
-                "conf": run["conf"],
-                "trigger_response": trigger_response,
-                "dag_run": dag_run,
-                "task_instances": task_instances,
-                "task_logs": task_logs,
-            }
-        )
-        metrics.append(pipeline_metric(base, dag_run, artifact_path))
-        if str(dag_run.get("state", "")).lower() != "success":
-            raise RuntimeError(f"Benchmark DAG run failed: {dag_run_id}")
-        for task in task_instances:
-            metric = task_metric(base, task, artifact_path)
-            task_id = str(task.get("task_id") or task.get("taskId"))
-            app_key = {
-                "stage_trips": "application_name_stage",
-                "check_silver_quality": "application_name_quality",
-                "build_gold_revenue": "application_name_gold",
-            }.get(task_id)
-            if app_key:
-                app = history.find_completed_application(
-                    str(run["conf"][app_key]),
-                    metric["started_at"],
-                    metric["finished_at"],
-                )
-                spark_metrics = history.application_artifacts(str(app["id"]))
-                metric.update(
-                    {
-                        key: value
-                        for key, value in spark_metrics.items()
-                        if key not in {"stage_attempts", "environment"}
-                    }
-                )
-                metric["spark_history"] = spark_metrics
-            metrics.append(metric)
-
-    for partition in workload.partitions:
-        for query in queries:
-            sql = render_query_sql(
-                query, partition, str(profile["data_catalog"]), benchmark_run_id
+    try:
+        for run in rendered_runs(benchmark_run_id, workload, profile):
+            partition = run["partition"]
+            repetition = int(run["repetition"])
+            dag_run_id = str(run["dag_run_id"])
+            base = base_metric(
+                benchmark_run_id,
+                profile,
+                workload,
+                partition,
+                repetition,
+                dag_id,
+                dag_run_id,
+                git_sha,
+                config_hash,
             )
-            for query_repetition in range(1, workload.query_repetitions + 1):
-                query_base = query_base_metric(
-                    benchmark_run_id,
-                    profile,
-                    workload,
-                    partition,
-                    query_repetition,
-                    dag_id,
-                    git_sha,
-                    config_hash,
+
+            trigger_response = airflow.trigger_dag_run(dag_run_id, run["conf"])
+            dag_run = airflow.wait_for_dag_run(dag_run_id, poll_interval, poll_timeout)
+            task_instances = airflow.list_task_instances(dag_run_id)
+            task_logs = {}
+            for task in task_instances:
+                task_id = str(task.get("task_id") or task.get("taskId"))
+                try_number = int(task.get("try_number") or task.get("tryNumber") or 1)
+                task_logs[task_id] = airflow.fetch_task_log(
+                    dag_run_id, task_id, try_number
                 )
-                query_started_at = utc_now_iso()
-                result = trino.execute(sql)
-                query_finished_at = utc_now_iso()
-                query_results.append(
-                    {
-                        "dag_run_id": None,
-                        "partition": partition.__dict__,
-                        "query_name": query.name,
-                        "query_repetition": query_repetition,
-                        "sql": sql,
-                        "result": result,
-                    }
+
+            dag_results.append(
+                {
+                    "dag_run_id": dag_run_id,
+                    "conf": run["conf"],
+                    "trigger_response": trigger_response,
+                    "dag_run": dag_run,
+                    "task_instances": task_instances,
+                    "task_logs": task_logs,
+                }
+            )
+            metrics.append(pipeline_metric(base, dag_run, artifact_path))
+            if str(dag_run.get("state", "")).lower() != "success":
+                raise RuntimeError(f"Benchmark DAG run failed: {dag_run_id}")
+            for task in task_instances:
+                metric = task_metric(base, task, artifact_path)
+                task_id = str(task.get("task_id") or task.get("taskId"))
+                app_key = {
+                    "stage_trips": "application_name_stage",
+                    "check_silver_quality": "application_name_quality",
+                    "build_gold_revenue": "application_name_gold",
+                }.get(task_id)
+                if app_key:
+                    app = history.find_completed_application(
+                        str(run["conf"][app_key]),
+                        metric["started_at"],
+                        metric["finished_at"],
+                    )
+                    spark_metrics = history.application_artifacts(str(app["id"]))
+                    metric.update(
+                        {
+                            key: value
+                            for key, value in spark_metrics.items()
+                            if key not in {"stage_attempts", "environment"}
+                        }
+                    )
+                    metric["spark_history"] = spark_metrics
+                metrics.append(metric)
+
+            for layout_query in iceberg_partition_queries(profile, partition):
+                layout_result = require_trino_success(
+                    trino.execute(layout_query["sql"]),
+                    f"iceberg layout {layout_query['table_name']} {dag_run_id}",
                 )
-                if str(result.get("state", "")).upper() != "FINISHED" or result.get(
-                    "error"
-                ):
-                    raise RuntimeError(f"Benchmark query failed: {query.name}")
                 metrics.append(
-                    query_metric(
-                        query_base,
-                        query,
-                        query_repetition,
-                        result,
-                        query_started_at,
-                        query_finished_at,
+                    iceberg_partition_metric(
+                        base,
+                        layout_query["table_name"],
+                        layout_result,
                         artifact_path,
                     )
                 )
 
-    for partition in workload.partitions:
-        table_name = f"{profile['data_catalog']}.silver.{partition.dataset}_trips"
-        layout_sql = (
-            f"SELECT sum(record_count) AS record_count, sum(file_count) AS file_count, "
-            f'sum(total_size) AS total_size FROM "{profile["data_catalog"]}".silver."{partition.dataset}_trips$partitions" '
-            f"WHERE partition.year = {partition.year} AND partition.month = {partition.month}"
-        )
-        layout_result = trino.execute(layout_sql)
-        layout_base = query_base_metric(
-            benchmark_run_id,
-            profile,
-            workload,
-            partition,
-            1,
-            dag_id,
-            git_sha,
-            config_hash,
-        )
-        metrics.append(
-            iceberg_partition_metric(
-                layout_base, table_name, layout_result, artifact_path
-            )
+        validate_repeated_write_consistency(metrics)
+
+        for partition in workload.partitions:
+            for query in queries:
+                sql = render_query_sql(
+                    query, partition, str(profile["data_catalog"]), benchmark_run_id
+                )
+                for query_repetition in range(1, workload.query_repetitions + 1):
+                    query_base = query_base_metric(
+                        benchmark_run_id,
+                        profile,
+                        workload,
+                        partition,
+                        query_repetition,
+                        dag_id,
+                        git_sha,
+                        config_hash,
+                    )
+                    query_started_at = utc_now_iso()
+                    result = trino.execute(sql)
+                    query_finished_at = utc_now_iso()
+                    query_results.append(
+                        {
+                            "dag_run_id": None,
+                            "partition": partition.__dict__,
+                            "query_name": query.name,
+                            "query_repetition": query_repetition,
+                            "sql": sql,
+                            "result": result,
+                        }
+                    )
+                    require_trino_success(
+                        result, f"benchmark query {query.name} r{query_repetition:02d}"
+                    )
+                    metrics.append(
+                        query_metric(
+                            query_base,
+                            query,
+                            query_repetition,
+                            result,
+                            query_started_at,
+                            query_finished_at,
+                            artifact_path,
+                        )
+                    )
+
+        write_json(
+            artifact_dir / "environment_snapshot.json", environment_snapshot(profile)
         )
 
-    write_json(
-        artifact_dir / "environment_snapshot.json", environment_snapshot(profile)
-    )
+        metric_ids = [str(metric["metric_id"]) for metric in metrics]
+        if len(metric_ids) != len(set(metric_ids)):
+            raise ValueError("Generated metric_id values are not unique")
 
-    metric_ids = [str(metric["metric_id"]) for metric in metrics]
-    if len(metric_ids) != len(set(metric_ids)):
-        raise ValueError("Generated metric_id values are not unique")
-
-    payload = {
-        "dry_run": False,
-        "benchmark_run_id": benchmark_run_id,
-        "workload_path": str(workload.path),
-        "profile_path": str(args.profile),
-        "query_paths": [str(query.path) for query in queries],
-        "git_sha": git_sha,
-        "config_hash": config_hash,
-        "dag_results": dag_results,
-        "query_results": query_results,
-        "metrics": metrics,
-    }
-    write_json(artifact_path, payload)
-
-    if metrics and not args.skip_metrics_insert:
-        metrics_table = str(profile["metrics_table"])
-        trino.execute(
-            f"delete from {metrics_table} where benchmark_run_id = {sql_literal(benchmark_run_id)}"
-        )
-        insert_result = trino.execute(metric_insert_sql(metrics_table, metrics))
-        payload["metrics_insert"] = insert_result
+        payload = current_payload()
         write_json(artifact_path, payload)
 
-    return payload
+        if metrics and not args.skip_metrics_insert:
+            metrics_table = str(profile["metrics_table"])
+            require_trino_success(
+                trino.execute(
+                    f"delete from {metrics_table} "
+                    f"where benchmark_run_id = {sql_literal(benchmark_run_id)}"
+                ),
+                f"delete metrics for {benchmark_run_id}",
+            )
+            insert_result = require_trino_success(
+                trino.execute(metric_insert_sql(metrics_table, metrics)),
+                f"insert metrics for {benchmark_run_id}",
+            )
+            payload["metrics_insert"] = insert_result
+            write_json(artifact_path, payload)
 
+    except Exception as error:
+        payload = current_payload()
+        payload["error"] = {"type": type(error).__name__, "message": str(error)}
+        write_json(artifact_path, payload)
+        raise
+
+    return payload
 
 def main() -> int:
     try:

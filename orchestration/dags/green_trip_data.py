@@ -111,6 +111,8 @@ def green_trips_dag():
             "{{ run_id }}",
             "--input-base",
             "s3a://raw/data",
+            "--application-name",
+            "sim__{{ run_id }}__green__stage",
         ],
     )
 
@@ -131,6 +133,8 @@ def green_trips_dag():
             "lakehouse",
             "--dag-run-id",
             "{{ run_id }}",
+            "--application-name",
+            "sim__{{ run_id }}__green__quality",
         ],
     )
 
@@ -151,6 +155,8 @@ def green_trips_dag():
             "lakehouse",
             "--dag-run-id",
             "{{ run_id }}",
+            "--application-name",
+            "sim__{{ run_id }}__green__gold",
         ],
     )
 

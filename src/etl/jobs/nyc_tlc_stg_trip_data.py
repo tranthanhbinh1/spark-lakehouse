@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-base", default="s3a://raw/data")
     parser.add_argument("--catalog", default="lakehouse")
     parser.add_argument("--benchmark-run-id")
-    parser.add_argument("--dag-run-id", required=True)
+    parser.add_argument("--dag-run-id")
     parser.add_argument("--repetition", type=int)
     parser.add_argument("--application-name")
     parser.add_argument("--dry-run", action="store_true")
@@ -232,6 +232,7 @@ def normalize(df: DataFrame, dataset: str) -> DataFrame:
 
 def main() -> None:
     args = parse_args()
+    args.dag_run_id = args.dag_run_id or f"manual__stg__{args.dataset}_{args.year}_{args.month:02d}"
 
     default_app_name = f"nyc-tlc-stg-{args.dataset}-{args.year}-{args.month:02d}"
     spark = build_spark(args.application_name or default_app_name)
