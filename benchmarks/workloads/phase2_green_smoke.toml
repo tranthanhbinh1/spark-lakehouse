@@ -1,0 +1,8 @@
+name = "phase2_green_smoke"
+pipeline_repetitions = 1
+query_repetitions = 1
+
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 1

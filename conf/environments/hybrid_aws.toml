@@ -1,0 +1,47 @@
+name = "hybrid_aws"
+architecture = "hybrid_storage"
+environment = "local_aws"
+data_catalog = "lakehouse_hybrid"
+metrics_table = "lakehouse.benchmark.run_metrics"
+history_server_base_url = "http://localhost:18080"
+cache_state = "uncontrolled"
+
+[aws]
+profile = "lakehouse-aws"
+region = "us-east-1"
+account_id = "174029311478"
+raw_bucket = "lakehouse-hybrid-174029311478-us-east-1-raw"
+raw_prefix = "data"
+warehouse_bucket = "lakehouse-hybrid-174029311478-us-east-1-warehouse"
+warehouse_prefix = "warehouse"
+glue_databases = ["silver", "gold", "quality"]
+
+[airflow]
+base_url = "http://localhost:8070"
+dag_id = "taxi_benchmark_pipeline_hybrid_aws"
+auth = "token"
+username_env = "AIRFLOW_USERNAME"
+password_env = "AIRFLOW_PASSWORD"
+bearer_token_env = "AIRFLOW_BEARER_TOKEN"
+poll_interval_seconds = 10
+poll_timeout_seconds = 7200
+
+[trino]
+base_url = "http://localhost:8085"
+user = "benchmark"
+catalog = "lakehouse"
+schema = "benchmark"
+source = "lakehouse-benchmark-runner"
+request_timeout_seconds = 300
+
+[spark]
+input_base = "s3a://lakehouse-hybrid-174029311478-us-east-1-raw/data"
+
+[runtime]
+airflow_worker_container = "airflow-airflow-worker-1"
+spark_master_container = "spark-master"
+spark_history_container = "spark-history"
+trino_container = "trino-coordinator"
+secret_source = "aws shared credentials or container environment"
+network = "local docker compose network with outbound AWS access"
+notes = "Airflow worker remains Spark driver in client mode; Spark and Trino must mount the hybrid AWS catalog config before running this profile."

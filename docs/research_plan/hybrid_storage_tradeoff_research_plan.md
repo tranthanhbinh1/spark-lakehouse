@@ -144,6 +144,86 @@ The benchmark pipeline should provide:
 
 The same benchmark harness must be used for both on-premises and hybrid runs.
 
+## Current Execution Status
+
+As of 2026-07-07, the Phase 1 on-premises smoke benchmark has passed for the
+local profile.
+
+Accepted smoke run:
+
+```text
+benchmark_run_id = bench_onprem_smoke_20260707T142202Z_d79fe1b
+config_hash = d857d7fa8913bc05c0fbd56c81e8e72769f630127b3a55bdf7af595ed49e664d
+artifact_path = benchmarks/artifacts/bench_onprem_smoke_20260707T142202Z_d79fe1b/
+```
+
+Evidence captured:
+
+- 6 successful Airflow DAG runs:
+  - 3 repetitions for `yellow 2011-01`
+  - 3 repetitions for `green 2014-01`
+- 18 successful Spark task metrics with Spark History application IDs.
+- 12 Iceberg partition/file-layout metrics.
+- 70 successful Trino query metrics.
+- 106 total normalized metrics inserted into
+  `lakehouse.benchmark.run_metrics`.
+- Repeated partition writes preserved stable Silver and Gold row/file metrics.
+- Quality summaries were scoped to the current `benchmark_run_id`.
+- Storage-sensitive queries processed materially more bytes than metadata-only
+  checks.
+
+This result replaces the earlier untrusted smoke evidence as the accepted local
+smoke baseline. It is not a full comparative result and must not be used as
+evidence for hybrid tradeoffs by itself.
+
+Next phase:
+
+Begin Phase 2 by adding the AWS S3 + Glue profile and infrastructure needed to
+run the same benchmark harness against the locked hybrid baseline.
+
+Phase 2 execution plan:
+
+```text
+docs/research_plan/phase2_hybrid_storage_baseline_plan.md
+```
+
+Phase 2 repo scaffolding added:
+
+- `conf/environments/hybrid_aws.toml`
+- `conf/spark/spark-defaults.hybrid-aws.conf`
+- `conf/trino/catalog/lakehouse_hybrid.properties`
+- `src/etl/sql/hybrid_aws/*.sql`
+- `scripts/aws/bootstrap_phase2_hybrid.py`
+
+As of 2026-07-08, the Phase 2 hybrid smoke benchmark has passed for the
+`hybrid_aws` profile.
+
+Accepted hybrid smoke run:
+
+```text
+benchmark_run_id = bench_hybrid_aws_smoke_20260708T053029Z_d79fe1b
+config_hash = 768f8591dbb2841a1ea9c7cdd7b248830a8d8fae45a0b8e5edbdad4b7cd64eb9
+artifact_path = benchmarks/artifacts/bench_hybrid_aws_smoke_20260708T053029Z_d79fe1b/
+```
+
+Evidence captured:
+
+- 6 successful Airflow DAG runs:
+  - 3 repetitions for `yellow 2011-01`
+  - 3 repetitions for `green 2014-01`
+- 18 successful Spark task metrics.
+- 12 Iceberg partition/file-layout metrics.
+- 70 successful Trino query metrics.
+- 106 total normalized metrics inserted into
+  `lakehouse.benchmark.run_metrics`.
+- Glue-backed Silver row counts were readable through Trino:
+  - `yellow 2011-01`: 13,393,301 rows
+  - `green 2014-01`: 803,609 rows
+
+This result is the accepted Phase 2 hybrid smoke baseline. The earlier
+green-only smoke run remains useful as setup evidence only and must not be used
+as the comparative hybrid benchmark result.
+
 ## Evaluation Dimensions
 
 ### 1. Performance
@@ -525,3 +605,4 @@ Limit optimization experiments to file-size control, partition pruning, and opti
 - The benchmark harness is implemented before hybrid benchmarking.
 - Existing job CLIs and table identifiers remain stable.
 - Future ideas should modify this file first.
+

@@ -922,6 +922,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
 
     return payload
 
+
 def main() -> int:
     try:
         payload = run_benchmark(parse_args())

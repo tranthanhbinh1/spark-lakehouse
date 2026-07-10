@@ -232,7 +232,9 @@ def normalize(df: DataFrame, dataset: str) -> DataFrame:
 
 def main() -> None:
     args = parse_args()
-    args.dag_run_id = args.dag_run_id or f"manual__stg__{args.dataset}_{args.year}_{args.month:02d}"
+    args.dag_run_id = (
+        args.dag_run_id or f"manual__stg__{args.dataset}_{args.year}_{args.month:02d}"
+    )
 
     default_app_name = f"nyc-tlc-stg-{args.dataset}-{args.year}-{args.month:02d}"
     spark = build_spark(args.application_name or default_app_name)

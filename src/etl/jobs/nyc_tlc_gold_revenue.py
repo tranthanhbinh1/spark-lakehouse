@@ -96,7 +96,9 @@ def aggregate_revenue(df: DataFrame, dataset: str, year: int, month: int) -> Dat
 
 def main() -> None:
     args = parse_args()
-    args.dag_run_id = args.dag_run_id or f"manual__gold__{args.dataset}_{args.year}_{args.month:02d}"
+    args.dag_run_id = (
+        args.dag_run_id or f"manual__gold__{args.dataset}_{args.year}_{args.month:02d}"
+    )
     default_app_name = (
         f"nyc-tlc-gold-revenue-{args.dataset}-{args.year}-{args.month:02d}"
     )

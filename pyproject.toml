@@ -35,4 +35,5 @@ project-includes = [
 [dependency-groups]
 dev = [
     "pyrefly>=1.0.0",
+    "ruff>=0.14.14",
 ]
