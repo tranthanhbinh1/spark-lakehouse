@@ -1,0 +1,13 @@
+name = "phase3_cold"
+pipeline_repetitions = 1
+query_repetitions = 1
+
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 1
+
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 1

@@ -11,6 +11,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--input-base", default="s3a://raw/data")
     parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--silver-namespace", default="silver")
     parser.add_argument("--benchmark-run-id")
     parser.add_argument("--dag-run-id")
     parser.add_argument("--repetition", type=int)
@@ -244,7 +245,7 @@ def main() -> None:
         f"{args.dataset}_tripdata_{args.year}-{args.month:02d}.parquet"
     )
 
-    target_table = f"{args.catalog}.silver.{args.dataset}_trips"
+    target_table = f"{args.catalog}.{args.silver_namespace}.{args.dataset}_trips"
 
     df = spark.read.parquet(input_path)
 

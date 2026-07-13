@@ -1,0 +1,210 @@
+name = "phase3_baseline"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+pipeline_pairs = 3
+correctness_queries = "benchmarks/queries/correctness"
+
+[[architectures]]
+name = "onprem"
+profile = "conf/environments/phase3_onprem.toml"
+
+[[architectures]]
+name = "hybrid_aws"
+profile = "conf/environments/phase3_hybrid_aws.toml"
+
+[[query_targets]]
+name = "financial_yellow_2011_01"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_yellow_2011_01"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_yellow_2011_04"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 4
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_yellow_2011_04"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 4
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_yellow_2011_07"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 7
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_yellow_2011_07"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 7
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_yellow_2011_10"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 10
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_yellow_2011_10"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 10
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_green_2014_01"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_green_2014_01"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_green_2014_04"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 4
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_green_2014_04"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 4
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_green_2014_07"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 7
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_green_2014_07"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 7
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "financial_green_2014_10"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 10
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "pickup_green_2014_10"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 10
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "dataset_scan_yellow"
+sql_file = "benchmarks/queries/performance/03_dataset_financial_scan.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "yellow"
+year = 2011
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[query_targets]]
+name = "dataset_scan_green"
+sql_file = "benchmarks/queries/performance/03_dataset_financial_scan.sql"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+dataset = "green"
+year = 2014
+month = 1
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3

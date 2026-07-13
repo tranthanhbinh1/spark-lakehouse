@@ -1,0 +1,36 @@
+name = "phase3_comparative"
+pipeline_repetitions = 1
+query_repetitions = 1
+
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 1
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 4
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 7
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 10
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 1
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 4
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 7
+[[partitions]]
+dataset = "green"
+year = 2014
+month = 10

@@ -59,10 +59,21 @@ def parse_args() -> argparse.Namespace:
         default=Path("conf/environments/onprem.toml"),
     )
     parser.add_argument("--queries-dir", type=Path, default=Path("benchmarks/queries"))
+    parser.add_argument("--query-name")
+    parser.add_argument("--query-dataset", choices=["yellow", "green"])
+    parser.add_argument("--query-year", type=int)
+    parser.add_argument("--query-month", type=int)
     parser.add_argument(
         "--artifact-root", type=Path, default=Path("benchmarks/artifacts")
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-pipeline", action="store_true")
+    parser.add_argument("--skip-queries", action="store_true")
+    parser.add_argument("--comparison-id")
+    parser.add_argument("--trial-id")
+    parser.add_argument("--sequence-position", type=int)
+    parser.add_argument("--measurement-protocol")
+    parser.add_argument("--retry-count", type=int, default=0)
     parser.add_argument(
         "--benchmark-run-id",
         help="Override the generated benchmark_run_id for a new benchmark execution.",
@@ -123,10 +134,10 @@ def load_queries(queries_dir: Path) -> list[Query]:
     return queries
 
 
-def git_short_sha() -> str:
+def git_commit_sha() -> str:
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "HEAD"],
             check=True,
             capture_output=True,
             text=True,
@@ -136,10 +147,29 @@ def git_short_sha() -> str:
     return result.stdout.strip()
 
 
+def selected_partitions(
+    workload: Workload,
+    dataset: str | None,
+    year: int | None,
+    month: int | None,
+) -> list[Partition]:
+    partitions = [
+        partition
+        for partition in workload.partitions
+        if (dataset is None or partition.dataset == dataset)
+        and (year is None or partition.year == year)
+        and (month is None or partition.month == month)
+    ]
+    if not partitions:
+        raise ValueError("Query target does not match a workload partition")
+    return partitions
+
+
 def canonical_config_hash(
     workload: Workload,
     profile: dict[str, Any],
     queries: list[Query],
+    query_target: dict[str, Any] | None = None,
 ) -> str:
     payload = {
         "workload": load_toml(workload.path),
@@ -148,6 +178,7 @@ def canonical_config_hash(
             {"name": query.name, "path": str(query.path), "sql": query.template}
             for query in queries
         ],
+        "query_target": query_target,
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -170,10 +201,18 @@ def render_dag_run_id(
 
 
 def render_query_sql(
-    query: Query, partition: Partition, catalog: str, benchmark_run_id: str
+    query: Query,
+    partition: Partition,
+    catalog: str,
+    benchmark_run_id: str,
+    namespaces: dict[str, Any] | None = None,
 ) -> str:
+    namespaces = namespaces or {}
     return query.template.format(
         catalog=catalog,
+        silver_namespace=namespaces.get("silver", "silver"),
+        quality_namespace=namespaces.get("quality", "quality"),
+        gold_namespace=namespaces.get("gold", "gold"),
         benchmark_run_id=benchmark_run_id,
         dataset=partition.dataset,
         year=partition.year,
@@ -216,6 +255,11 @@ def timestamp_literal(value: Any) -> str:
 def metric_insert_sql(metrics_table: str, metrics: list[dict[str, Any]]) -> str:
     columns = [
         "benchmark_run_id",
+        "comparison_id",
+        "trial_id",
+        "sequence_position",
+        "measurement_protocol",
+        "retry_count",
         "metric_id",
         "metric_type",
         "architecture",
@@ -234,6 +278,11 @@ def metric_insert_sql(metrics_table: str, metrics: list[dict[str, Any]]) -> str:
         "started_at",
         "finished_at",
         "duration_seconds",
+        "queued_time_ms",
+        "planning_time_ms",
+        "cpu_time_ms",
+        "physical_input_bytes",
+        "peak_memory_bytes",
         "records_read",
         "records_written",
         "result_rows",
@@ -250,6 +299,9 @@ def metric_insert_sql(metrics_table: str, metrics: list[dict[str, Any]]) -> str:
         "table_name",
         "file_count",
         "data_size_bytes",
+        "metric_name",
+        "metric_value",
+        "metric_unit",
         "cache_state",
         "error_class",
         "error_message",
@@ -385,6 +437,11 @@ def query_metric(
         "started_at": started_at,
         "finished_at": finished_at,
         "duration_seconds": result.get("duration_seconds"),
+        "queued_time_ms": result.get("queued_time_ms"),
+        "planning_time_ms": result.get("planning_time_ms"),
+        "cpu_time_ms": result.get("cpu_time_ms"),
+        "physical_input_bytes": result.get("physical_input_bytes"),
+        "peak_memory_bytes": result.get("peak_memory_bytes"),
         "records_read": result.get("processed_rows"),
         "records_written": None,
         "result_rows": result.get("row_count"),
@@ -424,26 +481,29 @@ def iceberg_partition_queries(
     profile: dict[str, Any], partition: Partition
 ) -> list[dict[str, str]]:
     catalog = str(profile["data_catalog"])
+    namespaces = profile.get("namespaces", {})
+    silver = str(namespaces.get("silver", "silver"))
+    gold = str(namespaces.get("gold", "gold"))
     dataset_literal = sql_literal(partition.dataset)
     return [
         {
-            "table_name": f"{catalog}.silver.{partition.dataset}_trips",
+            "table_name": f"{catalog}.{silver}.{partition.dataset}_trips",
             "sql": (
                 "SELECT sum(record_count) AS record_count, "
                 "sum(file_count) AS file_count, "
                 "sum(total_size) AS total_size "
-                f'FROM "{catalog}".silver."{partition.dataset}_trips$partitions" '
+                f'FROM "{catalog}"."{silver}"."{partition.dataset}_trips$partitions" '
                 f"WHERE partition.year = {partition.year} "
                 f"AND partition.month = {partition.month}"
             ),
         },
         {
-            "table_name": f"{catalog}.gold.trip_revenue_monthly",
+            "table_name": f"{catalog}.{gold}.trip_revenue_monthly",
             "sql": (
                 "SELECT sum(record_count) AS record_count, "
                 "sum(file_count) AS file_count, "
                 "sum(total_size) AS total_size "
-                f'FROM "{catalog}".gold."trip_revenue_monthly$partitions" '
+                f'FROM "{catalog}"."{gold}"."trip_revenue_monthly$partitions" '
                 f"WHERE partition.dataset = {dataset_literal} "
                 f"AND partition.year = {partition.year} "
                 f"AND partition.month = {partition.month}"
@@ -485,25 +545,34 @@ def environment_snapshot(profile: dict[str, Any]) -> dict[str, Any]:
         "profile": profile,
         "containers": {},
     }
-    for key, container in profile.get("runtime", {}).items():
-        if not key.endswith("_container"):
+    for key, configured in profile.get("runtime", {}).items():
+        if key.endswith("_container"):
+            containers = [configured]
+        elif key.endswith("_containers"):
+            containers = list(configured)
+        else:
             continue
-        try:
-            result = subprocess.run(
-                ["docker", "inspect", str(container)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            inspected = json.loads(result.stdout)[0]
-            snapshot["containers"][key] = {
-                "name": container,
-                "image": inspected.get("Config", {}).get("Image"),
-                "image_id": inspected.get("Image"),
-                "host_config": inspected.get("HostConfig"),
-            }
-        except (OSError, subprocess.CalledProcessError, ValueError) as error:
-            snapshot["containers"][key] = {"name": container, "error": str(error)}
+        for container in containers:
+            snapshot_key = f"{key}:{container}"
+            try:
+                result = subprocess.run(
+                    ["docker", "inspect", str(container)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                inspected = json.loads(result.stdout)[0]
+                snapshot["containers"][snapshot_key] = {
+                    "name": container,
+                    "image": inspected.get("Config", {}).get("Image"),
+                    "image_id": inspected.get("Image"),
+                    "host_config": inspected.get("HostConfig"),
+                }
+            except (OSError, subprocess.CalledProcessError, ValueError) as error:
+                snapshot["containers"][snapshot_key] = {
+                    "name": container,
+                    "error": str(error),
+                }
 
     runtime = profile.get("runtime", {})
     config_commands = {
@@ -544,6 +613,7 @@ def base_metric(
     dag_run_id: str,
     git_sha: str,
     config_hash: str,
+    identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "benchmark_run_id": benchmark_run_id,
@@ -560,6 +630,7 @@ def base_metric(
         "config_hash": config_hash,
         "processed_at": utc_now_iso(),
         "cache_state": profile.get("cache_state", "uncontrolled"),
+        **(identity or {}),
     }
 
 
@@ -572,6 +643,7 @@ def query_base_metric(
     dag_id: str,
     git_sha: str,
     config_hash: str,
+    identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "benchmark_run_id": benchmark_run_id,
@@ -588,6 +660,7 @@ def query_base_metric(
         "config_hash": config_hash,
         "processed_at": utc_now_iso(),
         "cache_state": profile.get("cache_state", "uncontrolled"),
+        **(identity or {}),
     }
 
 
@@ -596,6 +669,7 @@ def rendered_runs(
 ) -> list[dict[str, Any]]:
     input_base = str(profile["spark"]["input_base"])
     catalog = str(profile["data_catalog"])
+    namespaces = profile.get("namespaces", {})
     runs = []
     for partition in workload.partitions:
         for repetition in range(1, workload.pipeline_repetitions + 1):
@@ -611,6 +685,9 @@ def rendered_runs(
                         "repetition": repetition,
                         "input_base": input_base,
                         "catalog": catalog,
+                        "silver_namespace": str(namespaces.get("silver", "silver")),
+                        "quality_namespace": str(namespaces.get("quality", "quality")),
+                        "gold_namespace": str(namespaces.get("gold", "gold")),
                         "application_name_stage": f"{dag_run_id}__stage",
                         "application_name_quality": f"{dag_run_id}__quality",
                         "application_name_gold": f"{dag_run_id}__gold",
@@ -625,6 +702,7 @@ def rendered_runs(
 def dry_run_payload(
     benchmark_run_id: str,
     workload: Workload,
+    query_partitions: list[Partition],
     profile_path: Path,
     profile: dict[str, Any],
     queries: list[Query],
@@ -632,10 +710,14 @@ def dry_run_payload(
     config_hash: str,
 ) -> dict[str, Any]:
     rendered_queries = []
-    for partition in workload.partitions:
+    for partition in query_partitions:
         for query in queries:
             sql = render_query_sql(
-                query, partition, str(profile["data_catalog"]), benchmark_run_id
+                query,
+                partition,
+                str(profile["data_catalog"]),
+                benchmark_run_id,
+                profile.get("namespaces"),
             )
             for query_repetition in range(1, workload.query_repetitions + 1):
                 rendered_queries.append(
@@ -709,8 +791,23 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "warm-up/restart protocol; use cache_state='uncontrolled' for now"
         )
     queries = load_queries(args.queries_dir)
-    git_sha = git_short_sha()
-    config_hash = canonical_config_hash(workload, profile, queries)
+    if args.query_name:
+        queries = [query for query in queries if query.name == args.query_name]
+        if not queries:
+            raise ValueError(
+                f"Query {args.query_name!r} not found in {args.queries_dir}"
+            )
+    query_partitions = selected_partitions(
+        workload, args.query_dataset, args.query_year, args.query_month
+    )
+    query_target = {
+        "name": args.query_name,
+        "dataset": args.query_dataset,
+        "year": args.query_year,
+        "month": args.query_month,
+    }
+    git_sha = git_commit_sha()
+    config_hash = canonical_config_hash(workload, profile, queries, query_target)
     benchmark_run_id = args.benchmark_run_id or render_benchmark_run_id(
         profile, workload, git_sha
     )
@@ -728,6 +825,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         payload = dry_run_payload(
             benchmark_run_id,
             workload,
+            query_partitions,
             args.profile,
             profile,
             queries,
@@ -746,6 +844,13 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     poll_interval = int(profile["airflow"].get("poll_interval_seconds", 10))
     poll_timeout = int(profile["airflow"].get("poll_timeout_seconds", 7200))
     dag_id = str(profile["airflow"]["dag_id"])
+    identity = {
+        "comparison_id": args.comparison_id,
+        "trial_id": args.trial_id,
+        "sequence_position": args.sequence_position,
+        "measurement_protocol": args.measurement_protocol,
+        "retry_count": args.retry_count,
+    }
 
     def current_payload() -> dict[str, Any]:
         return {
@@ -762,7 +867,11 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         }
 
     try:
-        for run in rendered_runs(benchmark_run_id, workload, profile):
+        for run in (
+            []
+            if args.skip_pipeline
+            else rendered_runs(benchmark_run_id, workload, profile)
+        ):
             partition = run["partition"]
             repetition = int(run["repetition"])
             dag_run_id = str(run["dag_run_id"])
@@ -776,6 +885,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 dag_run_id,
                 git_sha,
                 config_hash,
+                identity,
             )
 
             trigger_response = airflow.trigger_dag_run(dag_run_id, run["conf"])
@@ -843,10 +953,14 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
 
         validate_repeated_write_consistency(metrics)
 
-        for partition in workload.partitions:
+        for partition in [] if args.skip_queries else query_partitions:
             for query in queries:
                 sql = render_query_sql(
-                    query, partition, str(profile["data_catalog"]), benchmark_run_id
+                    query,
+                    partition,
+                    str(profile["data_catalog"]),
+                    benchmark_run_id,
+                    profile.get("namespaces"),
                 )
                 for query_repetition in range(1, workload.query_repetitions + 1):
                     query_base = query_base_metric(
@@ -858,6 +972,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                         dag_id,
                         git_sha,
                         config_hash,
+                        identity,
                     )
                     query_started_at = utc_now_iso()
                     result = trino.execute(sql)

@@ -28,6 +28,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--silver-namespace", default="silver")
+    parser.add_argument("--gold-namespace", default="gold")
     parser.add_argument("--benchmark-run-id")
     parser.add_argument("--dag-run-id")
     parser.add_argument("--repetition", type=int)
@@ -47,9 +49,14 @@ def build_spark(app_name: str) -> SparkSession:
 
 
 def read_silver_partition(
-    spark: SparkSession, catalog: str, dataset: str, year: int, month: int
+    spark: SparkSession,
+    catalog: str,
+    silver_namespace: str,
+    dataset: str,
+    year: int,
+    month: int,
 ) -> DataFrame:
-    table = f"{catalog}.silver.{dataset}_trips"
+    table = f"{catalog}.{silver_namespace}.{dataset}_trips"
     return spark.table(table).where((F.col("year") == year) & (F.col("month") == month))
 
 
@@ -103,11 +110,16 @@ def main() -> None:
         f"nyc-tlc-gold-revenue-{args.dataset}-{args.year}-{args.month:02d}"
     )
     spark = build_spark(args.application_name or default_app_name)
-    gold_revenue_table = f"{args.catalog}.gold.trip_revenue_monthly"
+    gold_revenue_table = f"{args.catalog}.{args.gold_namespace}.trip_revenue_monthly"
 
     try:
         silver_partition = read_silver_partition(
-            spark, args.catalog, args.dataset, args.year, args.month
+            spark,
+            args.catalog,
+            args.silver_namespace,
+            args.dataset,
+            args.year,
+            args.month,
         )
         source_count = silver_partition.count()
         if source_count == 0:
@@ -122,7 +134,10 @@ def main() -> None:
 
         if args.dry_run:
             print(f"Gold target table: {gold_revenue_table}")
-            print(f"Silver source table: {args.catalog}.silver.{args.dataset}_trips")
+            print(
+                "Silver source table: "
+                f"{args.catalog}.{args.silver_namespace}.{args.dataset}_trips"
+            )
             print(
                 "Silver partition: "
                 f"dataset={args.dataset}, year={args.year}, month={args.month}"

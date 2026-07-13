@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -37,6 +38,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--catalog", default="lakehouse")
+    parser.add_argument("--silver-namespace", default="silver")
+    parser.add_argument("--quality-namespace", default="quality")
     parser.add_argument("--benchmark-run-id")
     parser.add_argument("--dag-run-id")
     parser.add_argument("--repetition", type=int)
@@ -56,9 +59,14 @@ def build_spark(app_name: str) -> SparkSession:
 
 
 def read_silver_partition(
-    spark: SparkSession, catalog: str, dataset: str, year: int, month: int
+    spark: SparkSession,
+    catalog: str,
+    silver_namespace: str,
+    dataset: str,
+    year: int,
+    month: int,
 ) -> DataFrame:
-    table = f"{catalog}.silver.{dataset}_trips"
+    table = f"{catalog}.{silver_namespace}.{dataset}_trips"
     return spark.table(table).where((F.col("year") == year) & (F.col("month") == month))
 
 
@@ -120,8 +128,8 @@ def schema_for_dataset(dataset: str):
 
 def run_pandera_checks(df: DataFrame, dataset: str) -> list[dict]:
     try:
-        schema = schema_for_dataset(dataset)
-        validated_df = schema.validate(check_obj=df)
+        schema: Any = schema_for_dataset(dataset)
+        validated_df: Any = schema.validate(df)
         errors = dict(validated_df.pandera.errors)
     except Exception as error:
         return [
@@ -209,10 +217,11 @@ def print_dry_run(
     year: int,
     month: int,
     catalog: str,
+    silver_namespace: str,
     quality_results_table: str,
 ) -> None:
     print(f"Quality target table: {quality_results_table}")
-    print(f"Silver source table: {catalog}.silver.{dataset}_trips")
+    print(f"Silver source table: {catalog}.{silver_namespace}.{dataset}_trips")
     print(f"Silver partition: dataset={dataset}, year={year}, month={month}")
     if df is not None:
         df.printSchema()
@@ -229,13 +238,20 @@ def main() -> int:
         f"nyc-tlc-silver-quality-{args.dataset}-{args.year}-{args.month:02d}"
     )
     spark = build_spark(args.application_name or default_app_name)
-    quality_results_table = f"{args.catalog}.quality.silver_trip_quality_results"
+    quality_results_table = (
+        f"{args.catalog}.{args.quality_namespace}.silver_trip_quality_results"
+    )
 
     silver_partition = None
     try:
         try:
             silver_partition = read_silver_partition(
-                spark, args.catalog, args.dataset, args.year, args.month
+                spark,
+                args.catalog,
+                args.silver_namespace,
+                args.dataset,
+                args.year,
+                args.month,
             )
             results = run_pre_checks(silver_partition)
             if not has_hard_failures(results):
@@ -263,6 +279,7 @@ def main() -> int:
                 args.year,
                 args.month,
                 args.catalog,
+                args.silver_namespace,
                 quality_results_table,
             )
         else:
