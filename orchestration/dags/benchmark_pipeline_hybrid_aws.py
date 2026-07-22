@@ -5,6 +5,10 @@ from airflow.sdk import dag
 HYBRID_AWS_SPARK_CONF = {
     "spark.driver.bindAddress": "0.0.0.0",
     "spark.driver.host": "airflow-airflow-worker-1",
+    "spark.executorEnv.AWS_PROFILE": "lakehouse-aws",
+    "spark.executorEnv.AWS_CREDENTIAL_PROFILES_FILE": (
+        "/home/spark/.aws/credentials"
+    ),
     "spark.hadoop.fs.s3a.aws.credentials.provider": (
         "com.amazonaws.auth.DefaultAWSCredentialsProviderChain"
     ),
