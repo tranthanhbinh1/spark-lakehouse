@@ -71,6 +71,31 @@ def client(profile: dict[str, Any]) -> Any:
     )
 
 
+def aws_environment(profile: dict[str, Any]) -> dict[str, str]:
+    config = profile["object_store"]
+    profile_name = config.get("profile")
+    if not profile_name:
+        return {}
+    credentials = boto3.Session(
+        profile_name=profile_name,
+        region_name=config.get("region"),
+    ).get_credentials()
+    if credentials is None:
+        raise RuntimeError(f"No AWS credentials available for profile {profile_name}")
+    frozen = credentials.get_frozen_credentials()
+    if not frozen.access_key or not frozen.secret_key:
+        raise RuntimeError(f"Incomplete AWS credentials for profile {profile_name}")
+    environment: dict[str, str] = {
+        "AWS_ACCESS_KEY_ID": frozen.access_key,
+        "AWS_SECRET_ACCESS_KEY": frozen.secret_key,
+    }
+    if frozen.token:
+        environment["AWS_SESSION_TOKEN"] = frozen.token
+    if config.get("region"):
+        environment["AWS_REGION"] = str(config["region"])
+    return environment
+
+
 def source_path(root: Path, partition: dict[str, Any]) -> Path:
     year = int(partition["year"])
     month = int(partition["month"])
@@ -79,19 +104,25 @@ def source_path(root: Path, partition: dict[str, Any]) -> Path:
 
 
 def spark_sql(profile: dict[str, Any], sql: str, capture: bool = False) -> str:
-    command = [
-        "docker",
-        "exec",
-        "-i",
-        profile["runtime"]["spark_master_container"],
-        "/opt/spark/bin/spark-sql",
-        "-e",
-        sql,
-    ]
+    command = ["docker", "exec", "-i"]
+    environment = os.environ.copy()
+    for name, value in aws_environment(profile).items():
+        # Passing only the name keeps secret values out of command arguments and tracebacks.
+        command.extend(["--env", name])
+        environment[name] = value
+    command.extend(
+        [
+            profile["runtime"]["spark_master_container"],
+            "/opt/spark/bin/spark-sql",
+            "-e",
+            sql,
+        ]
+    )
     result = subprocess.run(
         command,
         check=True,
         capture_output=capture,
+        env=environment,
         text=True,
     )
     return result.stdout if capture else ""

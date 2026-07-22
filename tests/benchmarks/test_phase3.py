@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from scripts.benchmarks.phase3_evidence import (
     collect_request_window,
@@ -11,6 +11,7 @@ from scripts.benchmarks.phase3_evidence import (
 from scripts.benchmarks.prepare_phase3 import (
     cleanup_from_manifest,
     remote_record,
+    spark_sql,
 )
 from scripts.benchmarks.report_phase3 import (
     aggregate_cost_estimate,
@@ -161,6 +162,30 @@ class Phase3Test(unittest.TestCase):
     def test_remote_checksum_mismatch_fails(self) -> None:
         with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
             remote_record(FakeS3(b"remote"), "bucket", "key", "bad", 6)
+
+    @patch(
+        "scripts.benchmarks.prepare_phase3.aws_environment",
+        return_value={
+            "AWS_ACCESS_KEY_ID": "access-value",
+            "AWS_SECRET_ACCESS_KEY": "secret-value",
+        },
+    )
+    @patch("scripts.benchmarks.prepare_phase3.subprocess.run")
+    def test_spark_sql_forwards_aws_credentials_without_values_in_command(
+        self,
+        run: MagicMock,
+        _: MagicMock,
+    ) -> None:
+        profile = {"runtime": {"spark_master_container": "spark-master"}}
+        spark_sql(profile, "select 1")
+        command = run.call_args.args[0]
+        environment = run.call_args.kwargs["env"]
+        self.assertIn("AWS_ACCESS_KEY_ID", command)
+        self.assertIn("AWS_SECRET_ACCESS_KEY", command)
+        self.assertNotIn("access-value", command)
+        self.assertNotIn("secret-value", command)
+        self.assertEqual(environment["AWS_ACCESS_KEY_ID"], "access-value")
+        self.assertEqual(environment["AWS_SECRET_ACCESS_KEY"], "secret-value")
 
     def test_cleanup_requires_matching_acceptance_marker(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
