@@ -5,6 +5,9 @@ from airflow.sdk import dag
 SPARK_CONF = {
     "spark.driver.bindAddress": "0.0.0.0",
     "spark.driver.host": "airflow-airflow-worker-1",
+    "spark.hadoop.fs.s3a.aws.credentials.provider": (
+        "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+    ),
 }
 
 
