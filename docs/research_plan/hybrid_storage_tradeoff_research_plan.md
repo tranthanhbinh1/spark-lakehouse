@@ -224,6 +224,69 @@ This result is the accepted Phase 2 hybrid smoke baseline. The earlier
 green-only smoke run remains useful as setup evidence only and must not be used
 as the comparative hybrid benchmark result.
 
+### Phase 3 Execution Status
+
+As of 2026-07-23, Phase 3 preparation and the non-evidence comparative
+preflight have passed from clean commit
+`59282a45a67bba1015456a7f2421f194ce431044`.
+
+Preparation:
+
+```text
+comparison_id = phase3_baseline_20260722T172509Z_59282a4
+manifest_path = benchmarks/artifacts/phase3_preparation/phase3_baseline_20260722T172509Z_59282a4_manifest.json
+```
+
+- All 16 prepared objects cover both architectures.
+- All 16 remote SHA-256 values match their local source files.
+
+Accepted preflight runs:
+
+```text
+onprem_run_id = phase3_preflight_20260722T172509Z_59282a4__onprem
+hybrid_run_id = phase3_preflight_20260722T172509Z_59282a4__hybrid_aws
+artifact_root = benchmarks/artifacts/phase3_preflight/
+```
+
+- Each architecture completed 2/2 Airflow DAG runs and 6/6 Spark tasks.
+- Each architecture completed 14/14 Trino queries with recorded query IDs.
+- Each architecture recorded six Spark application IDs.
+- Each architecture inserted 26 metrics across `airflow_task`,
+  `iceberg_partition`, `pipeline`, and `trino_query`; direct Trino reads
+  confirmed all rows in `lakehouse.benchmark.run_metrics`.
+- All 14 query results match after deterministic row sorting. The only raw
+  difference was nondeterministic `GROUP BY` output order.
+
+The official comparison did not begin measurements. Evidence initialization
+failed because the `m1LakehouseUser` identity lacks
+`cloudwatch:GetMetricStatistics` and `pricing:GetProducts`. No
+`comparison_run.json` state was created, and the temporary S3 request-metric
+configurations from the aborted initialization were removed.
+
+Next execution gate:
+
+1. Grant `cloudwatch:GetMetricStatistics` and `pricing:GetProducts` with
+   `Resource: "*"` to the benchmark AWS identity.
+2. Run a read-only evidence preflight covering CloudWatch metric retrieval,
+   AWS Pricing retrieval, S3 prefix inventory, and AWS credential resolution.
+3. Reconfirm the clean `59282a4` worktree and readable AWS profile mounts on
+   every Spark worker.
+4. Start official comparison
+   `phase3_baseline_20260722T172509Z_59282a4` without `--resume` and without
+   `--skip-evidence`.
+5. Validate complete pairs, identifiers, correctness, artifact/database
+   parity, resource samples, and required AWS evidence.
+6. Generate
+   `docs/research_results/phase3_baseline_tradeoff_report.md` plus retained
+   JSON/CSV evidence.
+7. Stop for explicit report acceptance before cleanup, canonical identifier
+   acceptance, or Phase 4.
+
+Do not change benchmark harness or protocol behavior before the official run.
+Any such change invalidates this preflight and requires a new clean commit,
+fresh preparation, and both preflight runs. Phase 4 remains blocked until the
+Phase 3 report is explicitly accepted.
+
 ## Evaluation Dimensions
 
 ### 1. Performance
