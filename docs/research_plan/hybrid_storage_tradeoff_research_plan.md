@@ -257,30 +257,120 @@ artifact_root = benchmarks/artifacts/phase3_preflight/
 - All 14 query results match after deterministic row sorting. The only raw
   difference was nondeterministic `GROUP BY` output order.
 
-The official comparison did not begin measurements. Evidence initialization
-failed because the `m1LakehouseUser` identity lacks
-`cloudwatch:GetMetricStatistics` and `pricing:GetProducts`. No
-`comparison_run.json` state was created, and the temporary S3 request-metric
-configurations from the aborted initialization were removed.
+The official comparison has not begun measurements. The earlier evidence
+initialization failure was resolved on 2026-07-26:
 
-Next execution gate:
+```text
+aws_principal = arn:aws:iam::174029311478:user/m1LakehouseUser
+evidence_snapshot = benchmarks/artifacts/phase3_evidence/snapshot.json
+evidence_captured_at = 2026-07-26T16:43:42.762887+00:00
+```
 
-1. Grant `cloudwatch:GetMetricStatistics` and `pricing:GetProducts` with
-   `Resource: "*"` to the benchmark AWS identity.
-2. Run a read-only evidence preflight covering CloudWatch metric retrieval,
-   AWS Pricing retrieval, S3 prefix inventory, and AWS credential resolution.
-3. Reconfirm the clean `59282a4` worktree and readable AWS profile mounts on
-   every Spark worker.
-4. Start official comparison
-   `phase3_baseline_20260722T172509Z_59282a4` without `--resume` and without
-   `--skip-evidence`.
-5. Validate complete pairs, identifiers, correctness, artifact/database
-   parity, resource samples, and required AWS evidence.
-6. Generate
-   `docs/research_results/phase3_baseline_tradeoff_report.md` plus retained
-   JSON/CSV evidence.
-7. Stop for explicit report acceptance before cleanup, canonical identifier
-   acceptance, or Phase 4.
+- The benchmark identity can retrieve CloudWatch bucket storage metrics and
+  AWS Pricing products.
+- The snapshot contains the `phase3/raw/` inventory (8 objects, 805,120,908
+  bytes) and the `warehouse/phase3/` inventory (28 objects, 209,580,140 bytes).
+- `BucketSizeBytes` and `NumberOfObjects` returned datapoints for both S3
+  buckets.
+- AWS Pricing returned Amazon S3 products for `us-east-1`.
+- No official
+  `benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/comparison_run.json`
+  exists. Existing dry-run comparison states are not official evidence.
+
+The remaining execution blocker is runtime credential propagation. The three
+Spark workers are healthy, but their read-only `/home/spark/.aws` bind mounts
+are currently empty. Do not start the official comparison until the following
+runbook passes.
+
+#### Official Phase 3 comparison runbook
+
+1. Preserve and commit any intended `main` changes, including this plan update.
+   The official run must not include uncommitted work or silently discard
+   unrelated user changes.
+2. Stage the existing host AWS files into the bind-mount source without printing
+   their contents:
+
+   ```bash
+   docker run --rm --user 0:0 \
+     -v /home/tb24/.aws:/source:ro \
+     -v /tmp/lakehouse-aws-spark:/target \
+     spark-local:3.5.6-java17 \
+     sh -lc 'install -o 185 -g 185 -m 600 /source/credentials /target/credentials && install -o 185 -g 185 -m 600 /source/config /target/config'
+   ```
+
+3. Verify the `lakehouse-aws` profile locally and verify both files are readable
+   from every Spark worker:
+
+   ```bash
+   aws sts get-caller-identity --profile lakehouse-aws
+
+   for container in spark-worker-1 spark-worker-2 spark-worker-3; do
+     docker exec "$container" sh -lc \
+       'test -r /home/spark/.aws/credentials && test -r /home/spark/.aws/config'
+   done
+   ```
+
+   The local principal must be
+   `arn:aws:iam::174029311478:user/m1LakehouseUser`, and every container command
+   must exit zero. Do not print either credential file.
+4. Switch to the exact accepted commit and verify the official target is new:
+
+   ```bash
+   git switch --detach 59282a45a67bba1015456a7f2421f194ce431044
+   git status --short
+   test ! -e benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/comparison_run.json
+   ```
+
+   `git status --short` must produce no output. Do not substitute a newer commit:
+   any harness or protocol change invalidates the accepted preparation and
+   comparative preflight.
+5. Confirm `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD` already exist in the
+   launching shell without displaying their values:
+
+   ```bash
+   test -n "${AIRFLOW_USERNAME:-}"
+   test -n "${AIRFLOW_PASSWORD:-}"
+   ```
+
+6. Start the official comparison exactly once. The initial invocation must not
+   use `--resume` or `--skip-evidence`:
+
+   ```bash
+   uv run python scripts/benchmarks/run_phase3_comparison.py \
+     --comparison-id phase3_baseline_20260722T172509Z_59282a4
+   ```
+
+   If it fails, retain `comparison_run.json` and all partial artifacts and stop
+   for diagnosis. Do not automatically use `--resume`: the current resume path
+   reinitializes evidence windows before it skips completed pairs, so it can
+   produce incomplete official evidence. Do not start a second fresh comparison
+   with the same identifier. Recovery requires an explicit decision after
+   determining whether the run can be resumed without losing evidence or must be
+   invalidated and repeated under a new identifier.
+
+7. After the comparison exits successfully, run the canonical validator and
+   report generator:
+
+   ```bash
+   uv run python scripts/benchmarks/report_phase3.py \
+     phase3_baseline_20260722T172509Z_59282a4
+   ```
+
+   Exit zero is required. This command validates complete pairs, identifiers,
+   correctness, artifact/database metric parity, resource samples, temporary S3
+   request-metric cleanup, CloudWatch evidence windows, and required pricing
+   rates. It must produce:
+
+   ```text
+   benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/comparison_run.json
+   benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/report/phase3_metrics.json
+   benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/report/phase3_metrics.csv
+   benchmarks/artifacts/comparisons/phase3_baseline_20260722T172509Z_59282a4/report/phase3_statistics.json
+   docs/research_results/phase3_baseline_tradeoff_report.md
+   ```
+
+8. Stop for explicit report acceptance. Do not clean up evidence, accept a
+   canonical comparison identifier, or begin Phase 4 before that decision.
 
 Do not change benchmark harness or protocol behavior before the official run.
 Any such change invalidates this preflight and requires a new clean commit,
