@@ -36,6 +36,7 @@ PHASE3_METRIC_COLUMNS = {
     "metric_name": "string",
     "metric_value": "double",
     "metric_unit": "string",
+    "file_layout": "string",
 }
 
 

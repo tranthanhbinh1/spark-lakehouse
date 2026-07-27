@@ -1,0 +1,50 @@
+name = "phase4_file_layout"
+workload = "benchmarks/workloads/phase3_comparative.toml"
+trial_repetitions = 3
+fragmented_file_count = 16
+warmup_executions = 1
+recorded_executions = 5
+cold_executions = 3
+
+[[cells]]
+name = "onprem_fragmented"
+architecture = "onprem"
+layout = "fragmented"
+profile = "conf/environments/phase4_onprem_fragmented.toml"
+source_namespace = "phase3_v2_silver"
+
+[[cells]]
+name = "onprem_compact"
+architecture = "onprem"
+layout = "compact"
+profile = "conf/environments/phase4_onprem_compact.toml"
+source_namespace = "phase4_file_layout_fragmented_silver"
+
+[[cells]]
+name = "hybrid_aws_fragmented"
+architecture = "hybrid_aws"
+layout = "fragmented"
+profile = "conf/environments/phase4_hybrid_aws_fragmented.toml"
+source_namespace = "phase3_v2_silver"
+
+[[cells]]
+name = "hybrid_aws_compact"
+architecture = "hybrid_aws"
+layout = "compact"
+profile = "conf/environments/phase4_hybrid_aws_compact.toml"
+source_namespace = "phase4_file_layout_fragmented_silver"
+
+[[queries]]
+name = "financial"
+sql_file = "benchmarks/queries/performance/01_partition_financial_aggregation.sql"
+scope = "partition"
+
+[[queries]]
+name = "pickup"
+sql_file = "benchmarks/queries/performance/02_pickup_location_aggregation.sql"
+scope = "partition"
+
+[[queries]]
+name = "dataset_scan"
+sql_file = "benchmarks/queries/performance/03_dataset_financial_scan.sql"
+scope = "dataset"

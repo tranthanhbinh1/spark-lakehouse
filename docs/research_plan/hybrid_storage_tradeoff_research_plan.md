@@ -411,10 +411,40 @@ factor 1 = architecture: onprem | hybrid_aws
 factor 2 = file layout: fragmented | compact
 ```
 
-The design is specified under Optimization 2 below. Its next gate is
-implementation plus an untimed preflight proving that all four cells have
-identical logical contents and the declared file-count contrast. The accepted
-Phase 3 baseline remains immutable and cannot be used as a fragmented treatment.
+The design is specified under Optimization 2 below. Implementation and an
+untimed implementation preflight completed on 2026-07-27:
+
+```text
+preflight_id = phase4_implementation_preflight_20260727
+evidence = benchmarks/artifacts/phase4_preflight/phase4_implementation_preflight_20260727/preflight.json
+status = passed (implementation validation only)
+```
+
+- The isolated harness creates four architecture/layout cells in fresh Phase 4
+  namespaces and hybrid warehouse prefixes; it reads but does not mutate the
+  accepted Phase 3 tables.
+- All 32 architecture/layout/partition cells passed: fragmented partitions
+  contain exactly 16 non-empty data files, compact partitions contain exactly
+  one, and no empty data files were observed.
+- Row counts, full-row order-insensitive checksums, null counts, schemas,
+  partition values, and deterministic aggregate results matched across all four
+  cells for every measured partition.
+- `lakehouse.benchmark.run_metrics` gained an explicit nullable `file_layout`
+  dimension so the timed experiment does not overload architecture or
+  environment labels.
+- The paired schedule dry-run contains 486 query steps and 1,944 cell
+  executions with unique sequence positions, alternating architecture order and
+  layout-first order across trials.
+
+This evidence was produced from an uncommitted implementation worktree based on
+commit `a84f434b234413696bc1349cfe2359fde6d0ff94`. It proves the treatment and
+logical-equivalence implementation, but it is deliberately rejected by the
+official runner and is not the frozen official preflight required by the gate.
+The next gate is to commit the implementation, rerun `prepare_phase4.py` with
+`--preflight-only` from a clean worktree to capture the frozen commit, resolved
+configs, infrastructure identity, and evidence path, then start the official
+single-use comparison ID. The accepted Phase 3 baseline remains immutable and
+cannot be used as a fragmented treatment.
 
 ## Evaluation Dimensions
 
@@ -559,8 +589,10 @@ relative hybrid penalty. See
 
 Status:
 
-Design accepted on 2026-07-27; implementation and untimed preflight are next.
-This is explicitly a post-baseline experiment. The accepted baseline already
+Design accepted on 2026-07-27; implementation and the untimed 32-cell
+implementation preflight passed on the same date. The official frozen preflight
+and timed comparison remain pending a clean committed worktree. This is
+explicitly a post-baseline experiment. The accepted baseline already
 has one data file per measured partition, so the experiment must not be
 described as improving or explaining that baseline.
 
@@ -796,10 +828,14 @@ Evaluate practical mitigations for hybrid-storage overhead.
 
 Tasks:
 
-- analyze the accepted filtered-versus-broad partition-pruning measurements
-- implement the accepted 2×2 controlled-fragmentation/compaction harness
-- pass the untimed file-count and logical-equivalence preflight
-- run the file-layout comparison under a fresh frozen commit and identifier
+- completed: analyze the accepted filtered-versus-broad partition-pruning
+  measurements
+- completed: implement the accepted 2×2 controlled-fragmentation/compaction
+  harness
+- completed: pass the untimed implementation file-count and logical-equivalence
+  preflight
+- next: commit the harness and rerun the preflight from the clean frozen commit
+- next: run the file-layout comparison under a fresh frozen identifier
 - validate and explicitly accept the file-layout report
 - optionally run Spark executor-sizing experiment
 - compare optimized vs unoptimized hybrid results

@@ -11,6 +11,7 @@ create table if not exists lakehouse.benchmark.run_metrics (
     metric_type string,
     architecture string,
     environment string,
+    file_layout string,
     workload_name string,
     dag_id string,
     dag_run_id string,
