@@ -446,6 +446,44 @@ configs, infrastructure identity, and evidence path, then start the official
 single-use comparison ID. The accepted Phase 3 baseline remains immutable and
 cannot be used as a fragmented treatment.
 
+#### Definitive Next Steps After `addc5d5`
+
+1. Implement the automated file-layout result validator and report generator
+   before starting the official run. It must enforce expected trial/protocol/cell
+   counts, unique sequence positions, successful query completion, non-null
+   `file_layout`, preflight identity, and the permitted-claim boundaries above.
+2. Commit the report tooling and this canonical-plan update. That clean commit,
+   not `addc5d5` alone, becomes the frozen Phase 4 execution commit.
+3. From the clean frozen commit, capture the official preflight without rewriting
+   the already validated treatment tables:
+
+   ```bash
+   uv run python scripts/benchmarks/prepare_phase4.py \
+     --preflight-only \
+     --preflight-id phase4_file_layout_<UTC>_<short-sha>
+   ```
+
+4. Verify that the new preflight reports `status = passed`,
+   `worktree_clean = true`, the frozen commit SHA, all 32 cells, the 16-to-1
+   file-count contrast, matching logical contents, resolved profiles, complete
+   infrastructure snapshots, and no snapshot errors.
+5. Launch the official comparison with a fresh single-use comparison ID and the
+   frozen preflight artifact:
+
+   ```bash
+   uv run python scripts/benchmarks/run_phase4_comparison.py \
+     --preflight-artifact <path-to-frozen-preflight.json>
+   ```
+
+6. Generate and validate the file-layout report. Stop for explicit acceptance;
+   do not treat the result as canonical and do not start executor sizing before
+   acceptance.
+7. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
+   locked hypothesis, so this experiment is required unless the user explicitly
+   amends the hypothesis set and moves H3 to future work.
+8. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
+   thesis/report narrative from the accepted Phase 3 and Phase 4 evidence.
+
 ## Evaluation Dimensions
 
 ### 1. Performance
@@ -680,9 +718,14 @@ Stop conditions:
   cache isolation fails, or concurrent external traffic contaminates the
   evidence window
 - stop for explicit report acceptance before treating the file-layout result as
-  canonical or beginning the optional executor-sizing experiment
+  canonical or beginning the executor-sizing experiment
 
-### Optional Optimization 3: Spark Executor Sizing
+### Optimization 3: Spark Executor Sizing
+
+Status:
+
+Required to evaluate locked hypothesis H3, but blocked until the file-layout
+report is validated and explicitly accepted.
 
 Problem:
 
@@ -701,7 +744,10 @@ Measure:
 - resource use
 - diminishing returns
 
-This experiment is optional and should only be included if time remains after the first two optimizations.
+Because H3 is part of the locked hypothesis set, this experiment is required for
+a complete evaluation. It may be omitted only after an explicit scope amendment
+that marks H3 as untested and moves it to future work; lack of time alone does
+not justify silently retaining an untested hypothesis.
 
 ## Workloads
 
@@ -830,15 +876,24 @@ Tasks:
 
 - completed: analyze the accepted filtered-versus-broad partition-pruning
   measurements
-- completed: implement the accepted 2×2 controlled-fragmentation/compaction
-  harness
+- completed: implement and commit the accepted 2×2 controlled-fragmentation
+  and compaction harness
 - completed: pass the untimed implementation file-count and logical-equivalence
   preflight
-- next: commit the harness and rerun the preflight from the clean frozen commit
-- next: run the file-layout comparison under a fresh frozen identifier
-- validate and explicitly accept the file-layout report
-- optionally run Spark executor-sizing experiment
-- compare optimized vs unoptimized hybrid results
+- next: implement and commit the automated file-layout validator/reporter
+- next: capture the clean frozen preflight and run the single-use file-layout
+  comparison
+- next: validate and explicitly accept the file-layout report
+- next: execute, validate, and explicitly accept the H3 Spark executor-sizing
+  experiment
+- compare optimized vs unoptimized hybrid results across the accepted reports
+
+Completion rule:
+
+Phase 4 is the final experimental phase. It is complete only after the
+file-layout report and H3 executor-sizing report are explicitly accepted, or
+after an explicit hypothesis amendment moves H3 to future work. Phase 5 still
+remains for synthesis and thesis/report production.
 
 Output:
 
