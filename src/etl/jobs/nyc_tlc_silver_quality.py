@@ -104,6 +104,33 @@ def run_validity_flag_checks(df: DataFrame) -> list[dict]:
     ]
 
 
+def run_signed_correction_checks(df: DataFrame) -> list[dict]:
+    counts = df.agg(
+        F.count(F.when(F.col("tip_amount") < 0, 1)).alias("negative_tip_amount_rows"),
+        F.count(F.when(F.col("tolls_amount") < 0, 1)).alias(
+            "negative_tolls_amount_rows"
+        ),
+    ).first()
+
+    return [
+        {
+            "check_name": check_name,
+            "severity": "soft",
+            "status": "warn" if count > 0 else "pass",
+            "observed_value": str(count),
+            "threshold": "informational; signed corrections allowed",
+            "extra": (
+                "Negative payment components are retained as source-system "
+                "refund or void adjustments."
+            ),
+        }
+        for check_name, count in (
+            ("negative_tip_amount_rows", counts["negative_tip_amount_rows"]),
+            ("negative_tolls_amount_rows", counts["negative_tolls_amount_rows"]),
+        )
+    ]
+
+
 def failed_read_check(error: Exception) -> list[dict]:
     return [
         {
@@ -256,6 +283,8 @@ def main() -> int:
             results = run_pre_checks(silver_partition)
             if not has_hard_failures(results):
                 results.extend(run_validity_flag_checks(silver_partition))
+            if not has_hard_failures(results):
+                results.extend(run_signed_correction_checks(silver_partition))
             if not has_hard_failures(results):
                 results.extend(run_pandera_checks(silver_partition, args.dataset))
         except Exception as error:

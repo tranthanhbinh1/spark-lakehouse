@@ -19,8 +19,8 @@ class YellowTripsPanderaSchema(pa.DataFrameModel):
     fare_amount: T.FloatType() = pa.Field(nullable=True)
     extra: T.FloatType() = pa.Field(nullable=True)
     mta_tax: T.FloatType() = pa.Field(nullable=True)
-    tip_amount: T.FloatType() = pa.Field(nullable=True, ge=0)
-    tolls_amount: T.FloatType() = pa.Field(nullable=True, ge=0)
+    tip_amount: T.FloatType() = pa.Field(nullable=True)
+    tolls_amount: T.FloatType() = pa.Field(nullable=True)
     improvement_surcharge: T.FloatType() = pa.Field(nullable=True)
     total_amount: T.FloatType() = pa.Field(nullable=True)
     congestion_surcharge: T.FloatType() = pa.Field(nullable=True)
@@ -32,7 +32,7 @@ class YellowTripsPanderaSchema(pa.DataFrameModel):
 
     is_valid_trip: T.BooleanType() = pa.Field(nullable=False)
     has_tip: T.BooleanType() = pa.Field(nullable=False)
-    tip_ratio: T.FloatType() = pa.Field(nullable=True, ge=0)
+    tip_ratio: T.FloatType() = pa.Field(nullable=True)
 
 
 class GreenTripsPanderaSchema(pa.DataFrameModel):
@@ -52,8 +52,8 @@ class GreenTripsPanderaSchema(pa.DataFrameModel):
     fare_amount: T.FloatType() = pa.Field(nullable=True)
     extra: T.FloatType() = pa.Field(nullable=True)
     mta_tax: T.FloatType() = pa.Field(nullable=True)
-    tip_amount: T.FloatType() = pa.Field(nullable=True, ge=0)
-    tolls_amount: T.FloatType() = pa.Field(nullable=True, ge=0)
+    tip_amount: T.FloatType() = pa.Field(nullable=True)
+    tolls_amount: T.FloatType() = pa.Field(nullable=True)
     ehail_fee: T.DoubleType() = pa.Field(nullable=True)
     improvement_surcharge: T.FloatType() = pa.Field(nullable=True)
     total_amount: T.FloatType() = pa.Field(nullable=True)
@@ -66,4 +66,4 @@ class GreenTripsPanderaSchema(pa.DataFrameModel):
 
     is_valid_trip: T.BooleanType() = pa.Field(nullable=False)
     has_tip: T.BooleanType() = pa.Field(nullable=False)
-    tip_ratio: T.DoubleType() = pa.Field(nullable=True, ge=0)
+    tip_ratio: T.DoubleType() = pa.Field(nullable=True)

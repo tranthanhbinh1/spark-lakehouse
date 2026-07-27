@@ -7,9 +7,9 @@ history_server_base_url = "http://localhost:18080"
 cache_state = "uncontrolled"
 
 [namespaces]
-silver = "phase3_silver"
-quality = "phase3_quality"
-gold = "phase3_gold"
+silver = "phase3_v2_silver"
+quality = "phase3_v2_quality"
+gold = "phase3_v2_gold"
 
 [airflow]
 base_url = "http://localhost:8070"
@@ -40,7 +40,7 @@ region = "us-east-1"
 
 [warehouse]
 bucket = "lakehouse-hybrid-174029311478-us-east-1-warehouse"
-prefix = "warehouse/phase3"
+prefix = "warehouse/phase3_v2"
 
 [runtime]
 airflow_worker_container = "airflow-airflow-worker-1"
