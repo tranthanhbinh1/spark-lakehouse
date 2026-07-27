@@ -60,7 +60,7 @@ Increasing Spark parallelism improves ingestion only up to the point where remot
 Mapped to:
 
 - RQ2
-- optional Spark executor-sizing experiment
+- required Spark executor-sizing experiment
 - ingestion runtime, stability, and diminishing-return measurements
 
 ## Architecture Scope
@@ -446,15 +446,19 @@ configs, infrastructure identity, and evidence path, then start the official
 single-use comparison ID. The accepted Phase 3 baseline remains immutable and
 cannot be used as a fragmented treatment.
 
-#### Definitive Next Steps After `addc5d5`
+#### Definitive Next Steps
 
-1. Implement the automated file-layout result validator and report generator
-   before starting the official run. It must enforce expected trial/protocol/cell
-   counts, unique sequence positions, successful query completion, non-null
-   `file_layout`, preflight identity, and the permitted-claim boundaries above.
-2. Commit the report tooling and this canonical-plan update. That clean commit,
-   not `addc5d5` alone, becomes the frozen Phase 4 execution commit.
-3. From the clean frozen commit, capture the official preflight without rewriting
+Completed preparation gates:
+
+- implemented the automated file-layout validator and report generator with
+  schedule, identity, metric, artifact, success, result-equivalence, and claim
+  boundary enforcement
+- included that tooling and this plan correction in the clean commit that becomes
+  the frozen Phase 4 execution commit
+
+Remaining steps:
+
+1. From the clean frozen commit, capture the official preflight without rewriting
    the already validated treatment tables:
 
    ```bash
@@ -463,11 +467,11 @@ cannot be used as a fragmented treatment.
      --preflight-id phase4_file_layout_<UTC>_<short-sha>
    ```
 
-4. Verify that the new preflight reports `status = passed`,
+2. Verify that the new preflight reports `status = passed`,
    `worktree_clean = true`, the frozen commit SHA, all 32 cells, the 16-to-1
    file-count contrast, matching logical contents, resolved profiles, complete
    infrastructure snapshots, and no snapshot errors.
-5. Launch the official comparison with a fresh single-use comparison ID and the
+3. Launch the official comparison with a fresh single-use comparison ID and the
    frozen preflight artifact:
 
    ```bash
@@ -475,13 +479,13 @@ cannot be used as a fragmented treatment.
      --preflight-artifact <path-to-frozen-preflight.json>
    ```
 
-6. Generate and validate the file-layout report. Stop for explicit acceptance;
+4. Generate and validate the file-layout report. Stop for explicit acceptance;
    do not treat the result as canonical and do not start executor sizing before
    acceptance.
-7. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
+5. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
    locked hypothesis, so this experiment is required unless the user explicitly
    amends the hypothesis set and moves H3 to future work.
-8. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
+6. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
    thesis/report narrative from the accepted Phase 3 and Phase 4 evidence.
 
 ## Evaluation Dimensions
@@ -880,7 +884,7 @@ Tasks:
   and compaction harness
 - completed: pass the untimed implementation file-count and logical-equivalence
   preflight
-- next: implement and commit the automated file-layout validator/reporter
+- completed: implement the automated file-layout validator/reporter
 - next: capture the clean frozen preflight and run the single-use file-layout
   comparison
 - next: validate and explicitly accept the file-layout report
@@ -961,7 +965,7 @@ Trying to perfectly tune Spark, Iceberg, and Trino can consume the project.
 
 Mitigation:
 
-Limit optimization experiments to file-size control, partition pruning, and optional executor sizing.
+Limit optimization experiments to file-size control, partition pruning, and executor sizing.
 
 ## Assumptions
 
