@@ -226,9 +226,9 @@ as the comparative hybrid benchmark result.
 
 ### Phase 3 Execution Status
 
-As of 2026-07-27, the first official Phase 3 attempt is invalidated and retained
-as failure evidence. It must not be resumed, repaired in place, or reused as a
-comparative result.
+As of 2026-07-27, the first official Phase 3 attempt is invalidated and the
+recovery baseline has passed fresh preparation, full-workload preflight on both
+architectures, and isolated AWS evidence initialization.
 
 #### Invalidated baseline
 
@@ -242,111 +242,123 @@ failed_dag_run = phase3_baseline_20260722T172509Z_59282a4__pipeline-01__a01__onp
 failed_task = check_silver_quality
 ```
 
-- The attempt ran from the accepted clean commit and passed the AWS identity,
-  Spark credential propagation, and new-target gates.
-- It failed on 2026-07-27 before any hybrid member or report ran.
+- The attempt passed its identity, credential, clean-commit, and new-target
+  gates but failed before any hybrid member or report ran.
 - The failed partition contained 1,273,735 rows. Seventeen rows had negative
   `tip_amount` and five had negative `tolls_amount`.
-- The violating rows were coherent refund or void records: fare, taxes,
-  payment components, and total were signed together. They were not staging
-  corruption.
-- The Pandera schema allowed signed fare and total values but prohibited signed
-  tip and toll values. That hard rule was internally inconsistent with the
-  source data.
-- The two-partition preflight covered only January partitions and therefore did
-  not exercise the failing July partition.
-- The partial attempt left table writes, database metrics, resource samples,
-  and an incomplete evidence window. Those artifacts are preserved. The old
-  identifier is permanently invalidated; `--resume`, manual DAG retry, and a
-  second fresh invocation with that identifier are prohibited.
+- Those rows were coherent refund or void records with signed fare, taxes,
+  payment components, and total. They were not staging corruption.
+- The old Pandera schema allowed signed fare and total values but prohibited
+  signed tips and tolls. That hard rule was internally inconsistent.
+- The old two-partition preflight covered January only and did not exercise the
+  failing July partition.
+- All partial artifacts, database metrics, resource samples, and the incomplete
+  evidence window are preserved. The old identifier is permanently invalid;
+  `--resume`, manual DAG retry, or a second invocation with it is prohibited.
 
-#### Approved recovery
+#### Accepted recovery baseline
 
-The recovery retains signed source-system corrections instead of filtering or
-replacing the July partition:
+```text
+comparison_id = phase3_baseline_20260727T035807Z_fde426a
+frozen_commit = fde426a8031a8ea101d470b54a8f0de5d4207336
+manifest = benchmarks/artifacts/phase3_preparation/phase3_baseline_20260727T035807Z_fde426a_manifest.json
+onprem_preflight = phase3_baseline_20260727T035807Z_fde426a__preflight__onprem
+hybrid_preflight = phase3_baseline_20260727T035807Z_fde426a__preflight__hybrid_aws
+evidence_snapshot = benchmarks/artifacts/phase3_evidence/phase3_baseline_20260727T035807Z_fde426a/snapshot.json
+evidence_captured_at = 2026-07-27T04:43:50.947492+00:00
+```
 
-- `tip_amount`, `tolls_amount`, and the derived `tip_ratio` no longer have a
-  nonnegative Pandera constraint for either dataset.
-- The quality job records `negative_tip_amount_rows` and
-  `negative_tolls_amount_rows` as `soft` checks. A nonzero count has status
-  `warn`; it does not suppress the Pandera check or cause a nonzero process
-  exit.
-- Existing structural, partition, derivation, and Pandera failures remain hard.
-  Audit rows are still written before a hard failure exits nonzero.
-- Recovery tables use new `phase3_v2_silver`, `phase3_v2_quality`, and
-  `phase3_v2_gold` namespaces. Hybrid warehouse data uses the new
-  `warehouse/phase3_v2` prefix. This prevents the invalidated run from changing
-  initial table state or storage-cost evidence.
-- Immutable raw inputs remain under the existing `phase3/raw` prefixes.
-- The recovery preflight uses
-  `benchmarks/workloads/phase3_comparative.toml` and exercises all eight
-  comparative partitions on both architectures. It must not be replaced by the
-  earlier two-partition cold preflight.
+Recovery semantics:
 
-A focused Spark dry run against the exact failed on-prem partition passed after
-the recovery. It recorded hard passes for row count, validity derivation, and
-Pandera validation, plus soft warnings with observed counts 17 and 5. The dry
-run did not write an audit row or modify the preserved comparison state.
+- Signed `tip_amount`, `tolls_amount`, and derived `tip_ratio` values remain in
+  both datasets.
+- `negative_tip_amount_rows` and `negative_tolls_amount_rows` are soft checks;
+  nonzero counts have status `warn` and do not cause process failure.
+- Structural, partition, derivation, and Pandera failures remain hard. Audit
+  rows are still written before a hard failure exits nonzero.
+- Tables use new `phase3_v2_silver`, `phase3_v2_quality`, and
+  `phase3_v2_gold` namespaces. Hybrid warehouse data uses
+  `warehouse/phase3_v2`, isolating initial table state and storage evidence from
+  the invalidated run.
+- Raw inputs remain under `phase3/raw`; no partition was filtered or replaced.
 
-#### Recovery execution gate
+Accepted preparation and preflight evidence:
 
-1. Commit all recovery code, profile, and plan changes. The resulting
-   clean commit becomes the only candidate Phase 3 baseline.
-2. Derive a new identifier after the commit is frozen, using the form
-   `phase3_baseline_<UTC timestamp>_<seven-character commit>`.
-3. Run fresh preparation from that commit:
+- The manifest contains 16 objects across two architectures with zero local to
+  remote SHA-256 mismatches and six verified namespace records.
+- Both preflights used the official eight-partition
+  `benchmarks/workloads/phase3_comparative.toml` workload.
+- Each architecture completed 8/8 DAG runs, 24/24 successful Spark tasks, 24
+  unique Spark application IDs, 56/56 finished Trino queries with IDs, and 104
+  normalized metrics.
+- Each artifact's 104 metrics match 104 rows in
+  `lakehouse.benchmark.run_metrics`.
+- All 56 query results match across architectures after deterministic row
+  sorting.
+- Both July quality audits contain hard passes for row count, validity
+  derivation, and Pandera validation, plus soft warnings with observed counts
+  17 and 5.
+
+Accepted AWS evidence initialization:
+
+- `phase3/raw/`: 8 objects and 805,120,908 bytes.
+- `warehouse/phase3_v2/`: 100 objects and 928,063,948 bytes after the hybrid
+  preflight.
+- `BucketSizeBytes` and `NumberOfObjects` each returned two datapoints for both
+  buckets.
+- AWS Pricing returned 177 Amazon S3 products for `us-east-1`.
+- The invalidated root snapshot remains preserved; current evidence uses the
+  comparison-specific path above.
+
+#### Official recovery comparison runbook
+
+1. Preserve and commit this plan update. Do not change any recovery code,
+   profiles, workload, harness, or report logic; such a change invalidates the
+   accepted commit and requires another preparation and both preflights.
+2. Verify the AWS principal and Spark worker credential mounts without printing
+   credentials:
 
    ```bash
-   uv run python scripts/benchmarks/prepare_phase3.py --comparison-id <new_comparison_id>
+   aws sts get-caller-identity --profile lakehouse-aws
+
+   for container in spark-worker-1 spark-worker-2 spark-worker-3; do
+     docker exec "$container" sh -lc 'test -r /home/spark/.aws/credentials && test -r /home/spark/.aws/config'
+   done
    ```
 
-   Require 16 source objects with matching local and remote SHA-256 values,
-   three isolated namespaces per architecture, and the hybrid
-   `warehouse/phase3_v2` namespace locations.
-4. Run both full-workload preflights from the same commit:
+   The principal must be
+   `arn:aws:iam::174029311478:user/m1LakehouseUser`; every container check must
+   exit zero.
+3. Detach at the exact accepted commit and require a clean, unused target:
 
    ```bash
-   uv run python scripts/benchmarks/run_benchmark.py --workload benchmarks/workloads/phase3_comparative.toml --profile conf/environments/phase3_onprem.toml --artifact-root benchmarks/artifacts/phase3_preflight --benchmark-run-id <new_comparison_id>__preflight__onprem
-
-   uv run python scripts/benchmarks/run_benchmark.py --workload benchmarks/workloads/phase3_comparative.toml --profile conf/environments/phase3_hybrid_aws.toml --artifact-root benchmarks/artifacts/phase3_preflight --benchmark-run-id <new_comparison_id>__preflight__hybrid_aws
+   git switch --detach fde426a8031a8ea101d470b54a8f0de5d4207336
+   git status --short
+   test ! -e benchmarks/artifacts/comparisons/phase3_baseline_20260727T035807Z_fde426a/comparison_run.json
    ```
 
-   Each architecture must complete 8/8 DAG runs and 24/24 Spark tasks. Query
-   counts, application IDs, normalized metrics, and deterministically sorted
-   query results must be complete and equivalent across architectures. The
-   persisted July quality audits must contain soft warnings rather than hard
-   failures.
-5. Capture a new evidence snapshot using the recovery profile and identifier.
-   Do not reuse the invalidated snapshot as current storage evidence:
+4. Confirm `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD` exist in the launch process
+   without displaying them.
+5. Start the official comparison exactly once, without `--resume` or
+   `--skip-evidence`:
 
    ```bash
-   uv run python scripts/benchmarks/phase3_evidence.py --comparison-id <new_comparison_id> --profile conf/environments/phase3_hybrid_aws.toml snapshot
-   ```
-
-6. Reverify the `lakehouse-aws` principal and the three Spark workers'
-   read-only AWS files. Confirm `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD` are
-   present without displaying them.
-7. Detach at the frozen recovery commit, require a clean worktree and a new
-   comparison target, then start the official comparison exactly once without
-   `--resume` or `--skip-evidence`:
-
-   ```bash
-   uv run python scripts/benchmarks/run_phase3_comparison.py --comparison-id <new_comparison_id>
+   uv run python scripts/benchmarks/run_phase3_comparison.py --comparison-id phase3_baseline_20260727T035807Z_fde426a
    ```
 
    On any failure, preserve all partial evidence and stop for diagnosis. Never
    repair or reuse a failed official identifier.
-8. After a successful comparison, run the canonical validator and report:
+6. After successful completion, run the canonical validator and report:
 
    ```bash
-   uv run python scripts/benchmarks/report_phase3.py <new_comparison_id>
+   uv run python scripts/benchmarks/report_phase3.py phase3_baseline_20260727T035807Z_fde426a
    ```
 
-9. Stop for explicit report acceptance. Do not clean evidence, accept the new
-   identifier as canonical, or begin Phase 4 before that decision.
+7. Stop for explicit report acceptance. Do not clean evidence, accept this
+   comparison as canonical, or begin Phase 4 before that decision.
 
-Phase 4 remains blocked until a new Phase 3 report passes all automated gates
-and is explicitly accepted.
+Phase 4 remains blocked until the recovery report passes all automated gates and
+is explicitly accepted.
 
 ## Evaluation Dimensions
 
