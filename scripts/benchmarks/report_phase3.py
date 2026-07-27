@@ -402,18 +402,21 @@ def aggregate_request_metrics(state: dict[str, Any]) -> dict[str, float]:
 
 
 def pricing_rates(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    entries = (
-        state.get("evidence", {})
-        .get("static_snapshot", {})
-        .get("pricing", {})
-        .get("price_list", [])
-    )
+    pricing = state.get("evidence", {}).get("static_snapshot", {}).get("pricing", {})
+    entries = [
+        *pricing.get("price_list", []),
+        *pricing.get("data_transfer_price_list", []),
+    ]
     rates: dict[str, dict[str, Any]] = {}
     for raw in entries:
         offer = json.loads(raw) if isinstance(raw, str) else raw
         product = offer.get("product", {})
         attributes = product.get("attributes", {})
+        service_code = str(
+            offer.get("serviceCode") or attributes.get("servicecode", "")
+        )
         group = str(attributes.get("group", ""))
+        group_description = str(attributes.get("groupDescription", ""))
         product_family = str(product.get("productFamily", ""))
         terms = offer.get("terms", {}).get("OnDemand", {})
         for term in terms.values():
@@ -427,17 +430,30 @@ def pricing_rates(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
                     "usd": float(usd),
                     "unit": unit,
                     "description": description,
+                    "begin_range": str(dimension.get("beginRange", "")),
+                    "end_range": str(dimension.get("endRange", "")),
                 }
-                if group == "S3-API-Tier2":
-                    rates.setdefault("get_requests", candidate)
-                if group == "S3-API-Tier1":
-                    rates.setdefault("put_requests", candidate)
                 if (
-                    product_family == "Data Transfer"
+                    group == "S3-API-Tier2"
+                    and group_description == "GET and all other requests"
+                ):
+                    rates["get_requests"] = candidate
+                if (
+                    group == "S3-API-Tier1"
+                    and group_description == "PUT/COPY/POST or LIST requests"
+                ):
+                    rates["put_requests"] = candidate
+                if (
+                    service_code == "AWSDataTransfer"
+                    and product_family == "Data Transfer"
                     and unit.lower() == "gb"
                     and "data transfer out" in description
+                    and str(attributes.get("fromRegionCode", "")) == "us-east-1"
+                    and str(attributes.get("transferType", "")) == "AWS Outbound"
+                    and str(attributes.get("toLocation", "")) == "External"
+                    and float(dimension.get("beginRange", -1)) == 0
                 ):
-                    rates.setdefault("bytes_downloaded", candidate)
+                    rates["bytes_downloaded"] = candidate
     return rates
 
 
@@ -549,8 +565,14 @@ def report_markdown(
     resources: dict[str, dict[str, float]],
     cost: dict[str, Any],
     errors: list[str],
+    accepted_on: str | None = None,
 ) -> str:
-    status = "ACCEPTANCE BLOCKED" if errors else "READY FOR MANUAL ACCEPTANCE"
+    if errors:
+        status = "ACCEPTANCE BLOCKED"
+    elif accepted_on:
+        status = f"ACCEPTED {accepted_on}"
+    else:
+        status = "READY FOR MANUAL ACCEPTANCE"
     lines = [
         "# Phase 3 Baseline Tradeoff Report",
         "",
@@ -620,6 +642,16 @@ def report_markdown(
     lines.extend(["", "## Acceptance Gate", ""])
     if errors:
         lines.extend(f"- BLOCKED: {error}" for error in errors)
+    elif accepted_on:
+        lines.extend(
+            [
+                "- All automated completeness and correctness gates passed.",
+                f"- The user explicitly accepted this comparison on {accepted_on}.",
+                "- This comparison is the canonical Phase 3 baseline. Phase 4 may "
+                "proceed under the definitive plan; evidence cleanup remains a "
+                "separate, explicit action.",
+            ]
+        )
     else:
         lines.append(
             "- All automated completeness and correctness gates passed. Manual user "
@@ -645,6 +677,10 @@ def main() -> int:
         "--output",
         type=Path,
         default=Path("docs/research_results/phase3_baseline_tradeoff_report.md"),
+    )
+    parser.add_argument(
+        "--accepted-on",
+        help="Record an already-made manual acceptance date in YYYY-MM-DD form.",
     )
     args = parser.parse_args()
 
@@ -681,7 +717,15 @@ def main() -> int:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
-        report_markdown(args.comparison_id, state, summaries, resources, cost, errors)
+        report_markdown(
+            args.comparison_id,
+            state,
+            summaries,
+            resources,
+            cost,
+            errors,
+            accepted_on=args.accepted_on,
+        )
     )
     return 1 if errors else 0
 

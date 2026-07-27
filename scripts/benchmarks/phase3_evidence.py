@@ -231,6 +231,29 @@ def static_snapshot(comparison_id: str, profile: dict[str, Any]) -> dict[str, An
         PaginationConfig={"PageSize": 100},
     ):
         price_list.extend(page.get("PriceList", []))
+    data_transfer_price_list = []
+    for page in paginator.paginate(
+        ServiceCode="AWSDataTransfer",
+        Filters=[
+            {
+                "Type": "TERM_MATCH",
+                "Field": "fromRegionCode",
+                "Value": "us-east-1",
+            },
+            {
+                "Type": "TERM_MATCH",
+                "Field": "transferType",
+                "Value": "AWS Outbound",
+            },
+            {
+                "Type": "TERM_MATCH",
+                "Field": "toLocation",
+                "Value": "External",
+            },
+        ],
+        PaginationConfig={"PageSize": 100},
+    ):
+        data_transfer_price_list.extend(page.get("PriceList", []))
     return {
         "captured_at": now.isoformat(),
         "prefix_inventories": inventories,
@@ -243,6 +266,8 @@ def static_snapshot(comparison_id: str, profile: dict[str, Any]) -> dict[str, An
             "service_code": "AmazonS3",
             "region": "us-east-1",
             "price_list": price_list,
+            "data_transfer_service_code": "AWSDataTransfer",
+            "data_transfer_price_list": data_transfer_price_list,
         },
     }
 

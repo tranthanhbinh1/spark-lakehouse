@@ -357,8 +357,64 @@ Accepted AWS evidence initialization:
 7. Stop for explicit report acceptance. Do not clean evidence, accept this
    comparison as canonical, or begin Phase 4 before that decision.
 
-Phase 4 remains blocked until the recovery report passes all automated gates and
-is explicitly accepted.
+#### Accepted Phase 3 result
+
+The user explicitly accepted the recovery comparison on 2026-07-27:
+
+```text
+comparison_id = phase3_baseline_20260727T035807Z_fde426a
+execution_commit = fde426a8031a8ea101d470b54a8f0de5d4207336
+report = docs/research_results/phase3_baseline_tradeoff_report.md
+status = accepted
+```
+
+- All 166/166 comparison attempts completed; no attempt failed or retried.
+- Hybrid median pipeline runtime was 139.91% to 185.43% above on-premises
+  across the eight measured partitions.
+- The aggregate modeled S3 request and internet-transfer cost was USD
+  0.97383823. The report uses captured Amazon S3 request prices and the
+  `AWSDataTransfer` first outbound tier for `us-east-1`; Cost Explorer
+  reconciliation remains deferred.
+- Automated completeness and cross-architecture correctness gates passed.
+- Evidence cleanup was not authorized and has not been performed.
+
+Phase 3 is complete and Phase 4 is unblocked.
+
+### Phase 4 Execution Status
+
+As of 2026-07-27, the partition-pruning analysis has completed against the
+accepted Phase 3 measurements:
+
+```text
+analysis = docs/research_results/phase4_partition_pruning_analysis.md
+source_comparison = phase3_baseline_20260727T035807Z_fde426a
+status = automated analysis passed
+```
+
+- Partition filters reduced Trino physical input by 69.44% to 83.67% in every
+  measured comparison.
+- Median query latency improved in 28/32 architecture/protocol/partition
+  comparison cases and in 13/16 hybrid cases.
+- The relative hybrid latency penalty narrowed in 10/16 cases, so pruning does
+  not consistently remove the hybrid penalty.
+- H2 is partially supported for query-layout optimization as an absolute I/O
+  mitigation. Request-count reduction was not directly measured.
+- The accepted Phase 3 file-layout metrics report one data file for every
+  measured partition on both architectures. The planned “fewer, larger files”
+  experiment therefore has no valid treatment contrast against this baseline.
+
+The user accepted a controlled-fragmentation/compaction design on 2026-07-27.
+The second Phase 4 experiment is therefore a post-baseline 2×2 comparison:
+
+```text
+factor 1 = architecture: onprem | hybrid_aws
+factor 2 = file layout: fragmented | compact
+```
+
+The design is specified under Optimization 2 below. Its next gate is
+implementation plus an untimed preflight proving that all four cells have
+identical logical contents and the declared file-count contrast. The accepted
+Phase 3 baseline remains immutable and cannot be used as a fragmented treatment.
 
 ## Evaluation Dimensions
 
@@ -467,34 +523,17 @@ This is a secondary dimension, not the main benchmark target.
 
 The project will not attempt perfect optimization. It will evaluate selected practical optimizations that are relevant to RQ2.
 
-### Optimization 1: File-size And Small-file Control
+### Optimization 1: Partition Pruning
+
+Status:
+
+Completed against the accepted Phase 3 measurements. This experiment is first
+because it already has a valid filtered-versus-broad workload contrast.
 
 Problem:
 
-Small files are harmful for object storage and analytical query planning.
-
-Experiment:
-
-- default write behavior
-- controlled repartitioning or target file-size strategy
-
-Measure:
-
-- number of data files
-- average file size
-- Spark write runtime
-- Trino query latency
-- S3 request behavior where available
-
-Expected result:
-
-Fewer, larger files should reduce metadata and object-store overhead, but may increase write-side shuffle cost.
-
-### Optimization 2: Partition Pruning
-
-Problem:
-
-Hybrid object storage becomes more expensive and slower when queries scan unnecessary files.
+Hybrid object storage becomes more expensive and slower when queries scan
+unnecessary files.
 
 Experiment:
 
@@ -504,13 +543,112 @@ Experiment:
 Measure:
 
 - Trino query latency
+- physical input bytes
 - returned rows
 - partition filter presence
 - runtime difference between filtered and unfiltered queries
 
-Expected result:
+Observed result:
 
-Partition-aware queries should reduce latency and unnecessary object-store reads.
+Partition-aware queries reduced physical input in every case and improved
+hybrid median latency in 13/16 cases. They did not consistently narrow the
+relative hybrid penalty. See
+`docs/research_results/phase4_partition_pruning_analysis.md`.
+
+### Optimization 2: File-size And Small-file Control
+
+Status:
+
+Design accepted on 2026-07-27; implementation and untimed preflight are next.
+This is explicitly a post-baseline experiment. The accepted baseline already
+has one data file per measured partition, so the experiment must not be
+described as improving or explaining that baseline.
+
+Problem:
+
+Small files are harmful for object storage and analytical query planning.
+
+Experimental design:
+
+- use a 2×2 design with `onprem` and `hybrid_aws` architectures crossed with
+  `fragmented` and `compact` layouts
+- use the same eight accepted Phase 3 monthly partitions, schemas, partition
+  specification, SQL queries, compute topology, and software commit in all four
+  cells
+- create the fragmented treatment with 16 non-empty data files per monthly
+  partition
+- derive the compact treatment from the fragmented treatment and require one
+  data file per monthly partition
+- preserve identical rows and values across both layouts; compaction may change
+  physical files and Iceberg metadata only
+- use fresh Phase 4 namespaces, warehouse prefixes, run IDs, and comparison IDs;
+  never mutate or reuse Phase 3 tables or evidence
+- run three complete paired layout trials per architecture and partition
+- retain the Phase 3 query protocols: five recorded warm executions after an
+  unrecorded warm-up and three service-cold executions
+- alternate which layout is queried first across paired trials and isolate
+  service-cold executions with the same restart/readiness procedure to limit
+  cache and ordering bias
+
+Preflight acceptance gate:
+
+- all 32 architecture/layout/partition cells exist
+- fragmented partitions contain exactly 16 non-empty data files and compact
+  partitions contain exactly one
+- row counts, null counts, schema, partition values, and deterministic query
+  results match between layouts and across architectures
+- no timed trial begins unless the file-count contrast and logical-equivalence
+  checks pass for every cell
+- the frozen commit, resolved configs, infrastructure identity, and evidence
+  paths are captured before the official comparison ID is used
+
+Primary comparisons:
+
+- within each architecture, calculate the paired fragmented-versus-compact
+  latency, physical-input, planning-time, request-proxy, and write-cost deltas
+- calculate the file-layout interaction by comparing the fragmentation penalty
+  between `hybrid_aws` and `onprem`
+- compare the hybrid-versus-on-premises latency penalty under fragmented and
+  compact layouts
+- report compaction runtime and write-side resource/request overhead separately
+  from read-side query effects
+
+Measure:
+
+- number of data files
+- average file size
+- Spark write runtime
+- Trino query latency
+- Trino planning time and physical input bytes where available
+- S3 request behavior in isolated evidence windows where available
+- compaction CPU, memory, elapsed-time, and request proxies
+- failures, retries, and result mismatches
+
+Interpretation and permitted claims:
+
+- a positive result may show that compaction recovers performance lost to
+  deliberately induced fragmentation under the tested workload
+- a larger fragmentation penalty for `hybrid_aws` supports file layout as a
+  hybrid-sensitive mitigation; a similar penalty on both architectures supports
+  only a general file-layout benefit
+- a null or adverse result leaves the file-layout component of H2 unsupported at
+  this scale
+- no result may be used to claim that small files caused the accepted Phase 3
+  penalty, that the production-like baseline was fragmented, or that compaction
+  improved the already single-file baseline
+- CloudWatch or pricing evidence that cannot be isolated to a layout-specific
+  window must remain a modeled proxy and cannot support a causal request-count
+  claim
+
+Stop conditions:
+
+- invalidate and replace an official comparison ID after any partial timed
+  failure; never repair or resume it
+- stop if either layout misses its declared file count, logical results differ,
+  cache isolation fails, or concurrent external traffic contaminates the
+  evidence window
+- stop for explicit report acceptance before treating the file-layout result as
+  canonical or beginning the optional executor-sizing experiment
 
 ### Optional Optimization 3: Spark Executor Sizing
 
@@ -658,8 +796,11 @@ Evaluate practical mitigations for hybrid-storage overhead.
 
 Tasks:
 
-- run file-size/small-file optimization experiment
-- run partition-pruning experiment
+- analyze the accepted filtered-versus-broad partition-pruning measurements
+- implement the accepted 2×2 controlled-fragmentation/compaction harness
+- pass the untimed file-count and logical-equivalence preflight
+- run the file-layout comparison under a fresh frozen commit and identifier
+- validate and explicitly accept the file-layout report
 - optionally run Spark executor-sizing experiment
 - compare optimized vs unoptimized hybrid results
 
