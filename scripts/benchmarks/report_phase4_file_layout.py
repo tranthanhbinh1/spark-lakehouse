@@ -123,8 +123,7 @@ def validate_spec(spec: dict[str, Any]) -> list[str]:
     errors = []
     if int(spec.get("trial_repetitions", -1)) != EXPECTED_TRIALS:
         errors.append(
-            f"Expected {EXPECTED_TRIALS} trials, got "
-            f"{spec.get('trial_repetitions')}"
+            f"Expected {EXPECTED_TRIALS} trials, got {spec.get('trial_repetitions')}"
         )
     observed_protocols = {
         "warmup": int(spec.get("warmup_executions", -1)),
@@ -189,8 +188,7 @@ def validate_state(
                 )
         if attempt.get("status") != "complete":
             errors.append(
-                f"Attempt {attempt.get('pair_id', index)} is "
-                f"{attempt.get('status')}"
+                f"Attempt {attempt.get('pair_id', index)} is {attempt.get('status')}"
             )
         observed_members = list(attempt.get("members", []))
         expected_members = list(expected["members"])
@@ -228,6 +226,7 @@ def validate_state(
                 "protocol": expected["protocol"],
                 "execution": expected["execution"],
                 "target": expected["target"],
+                "profile": expected_member["profile"],
             }
 
     expected_positions = list(range(1, len(expected_pairs) * 4 + 1))
@@ -296,8 +295,7 @@ def validate_preflight_evidence(
 def fetch_metrics(comparison_id: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
     table = str(profile["metrics_table"])
     result = TrinoClient(profile["trino"]).execute(
-        f"select * from {table} where comparison_id = "
-        f"{sql_literal(comparison_id)}"
+        f"select * from {table} where comparison_id = {sql_literal(comparison_id)}"
     )
     if result.get("state") != "FINISHED" or result.get("error"):
         raise RuntimeError(f"Metric query failed: {result}")
@@ -398,6 +396,7 @@ def validate_metrics(
         expected_trial_id = (
             f"{member['pair_id']}__{member['architecture']}__{member['layout']}"
         )
+        metric_architecture = load_toml(ROOT / str(member["profile"]))["architecture"]
         expected = {
             "comparison_id": artifact_dir.name,
             "trial_id": expected_trial_id,
@@ -405,7 +404,7 @@ def validate_metrics(
             "measurement_protocol": member["protocol"],
             "retry_count": 0,
             "metric_type": "trino_query",
-            "architecture": member["architecture"],
+            "architecture": metric_architecture,
             "file_layout": member["layout"],
             "query_name": target["query_name"],
             "dataset": target["dataset"],
@@ -469,8 +468,7 @@ def validate_metrics(
             }
             if not values_equal(comparable_reference, comparable_result):
                 errors.append(
-                    f"Query result mismatch in {pair_id}: "
-                    f"{reference_id} vs {run_id}"
+                    f"Query result mismatch in {pair_id}: {reference_id} vs {run_id}"
                 )
     return errors
 
@@ -500,9 +498,9 @@ def summarize_effects(
         if run_id not in metric_by_run:
             continue
         pair_members[member["pair_id"]] = member
-        by_pair[member["pair_id"]][
-            (member["architecture"], member["layout"])
-        ] = metric_by_run[run_id]
+        by_pair[member["pair_id"]][(member["architecture"], member["layout"])] = (
+            metric_by_run[run_id]
+        )
     for pair_id, cells in by_pair.items():
         member = pair_members[pair_id]
         key = (
@@ -520,9 +518,7 @@ def summarize_effects(
             cell_values: dict[str, list[float]] = defaultdict(list)
             missing = 0
             for _pair_id, cells in samples:
-                values = {
-                    cell: metric.get(measure) for cell, metric in cells.items()
-                }
+                values = {cell: metric.get(measure) for cell, metric in cells.items()}
                 if len(values) != 4 or any(value is None for value in values.values()):
                     missing += 1
                     continue
@@ -533,12 +529,8 @@ def summarize_effects(
                 hybrid_compact = numeric[("hybrid_aws", "compact")]
                 for (architecture, layout), value in numeric.items():
                     cell_values[f"{architecture}:{layout}"].append(value)
-                onprem_penalty = percentage_delta(
-                    onprem_compact, onprem_fragmented
-                )
-                hybrid_penalty = percentage_delta(
-                    hybrid_compact, hybrid_fragmented
-                )
+                onprem_penalty = percentage_delta(onprem_compact, onprem_fragmented)
+                hybrid_penalty = percentage_delta(hybrid_compact, hybrid_fragmented)
                 hybrid_fragmented_penalty = percentage_delta(
                     onprem_fragmented, hybrid_fragmented
                 )
@@ -548,9 +540,7 @@ def summarize_effects(
                 candidates = {
                     "onprem_fragmentation_penalty_percent": onprem_penalty,
                     "hybrid_fragmentation_penalty_percent": hybrid_penalty,
-                    "hybrid_penalty_fragmented_percent": (
-                        hybrid_fragmented_penalty
-                    ),
+                    "hybrid_penalty_fragmented_percent": (hybrid_fragmented_penalty),
                     "hybrid_penalty_compact_percent": hybrid_compact_penalty,
                 }
                 for name, value in candidates.items():
@@ -594,9 +584,7 @@ def preparation_summary(preflight: dict[str, Any] | None) -> dict[str, Any]:
             values[str(job.get("cell"))].append(float(elapsed))
     return {
         "jobs": sum(len(items) for items in values.values()),
-        "by_cell": {
-            cell: descriptive(items) for cell, items in sorted(values.items())
-        },
+        "by_cell": {cell: descriptive(items) for cell, items in sorted(values.items())},
         "claim": "descriptive_only" if values else "unavailable",
     }
 

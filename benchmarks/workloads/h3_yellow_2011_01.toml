@@ -1,0 +1,8 @@
+name = "h3_yellow_2011_01"
+pipeline_repetitions = 1
+query_repetitions = 1
+
+[[partitions]]
+dataset = "yellow"
+year = 2011
+month = 1

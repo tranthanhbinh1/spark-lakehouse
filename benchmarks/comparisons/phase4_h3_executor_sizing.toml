@@ -1,0 +1,28 @@
+name = "phase4_h3_executor_sizing"
+repetitions = 3
+
+[[workloads]]
+name = "yellow_2011_01"
+path = "benchmarks/workloads/h3_yellow_2011_01.toml"
+
+[[workloads]]
+name = "green_2014_01"
+path = "benchmarks/workloads/h3_green_2014_01.toml"
+
+[[profiles]]
+name = "small"
+path = "conf/environments/h3_hybrid_aws_small.toml"
+cores_max = 4
+executor_cores = 4
+
+[[profiles]]
+name = "medium"
+path = "conf/environments/h3_hybrid_aws_medium.toml"
+cores_max = 8
+executor_cores = 4
+
+[[profiles]]
+name = "default"
+path = "conf/environments/h3_hybrid_aws_default.toml"
+cores_max = 12
+executor_cores = 4

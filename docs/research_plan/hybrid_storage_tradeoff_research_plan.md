@@ -456,36 +456,36 @@ Completed preparation gates:
 - included that tooling and this plan correction in the clean commit that becomes
   the frozen Phase 4 execution commit
 
+Completed file-layout execution (accepted 2026-07-28):
+
+- frozen execution commit: `f62a1f5dbe979c3f77b88dc84437ac8552fa0045`
+- official preflight:
+  `benchmarks/artifacts/phase4_preflight/phase4_file_layout_20260727_f62a1f5/preflight.json`
+- preflight result: passed 32/32 cells, exact 16-to-1 file-count contrast,
+  logical equivalence, clean worktree, and error-free infrastructure snapshots
+- official single-use comparison ID:
+  `phase4_file_layout_20260727T102700Z_f62a1f5_official01`
+- final state:
+  `benchmarks/artifacts/comparisons/phase4_file_layout_20260727T102700Z_f62a1f5_official01/comparison_run.json`
+- result: 486/486 paired steps and 1,944/1,944 cell executions completed with
+  zero failures
+- final report:
+  `docs/research_results/phase4_file_layout_report.md`
+- validation: all automated completeness, identity, metric, artifact, success,
+  and query-result-equivalence gates passed
+- acceptance: the user explicitly accepted the report on 2026-07-28
+- conclusion: the file-layout component of H2 is unsupported at this scale;
+  compaction improved service-cold on-premises latency but did not improve the
+  hybrid treatment, and no causal S3 request-count or write-cost claim is
+  permitted
+
 Remaining steps:
 
-1. From the clean frozen commit, capture the official preflight without rewriting
-   the already validated treatment tables:
-
-   ```bash
-   uv run python scripts/benchmarks/prepare_phase4.py \
-     --preflight-only \
-     --preflight-id phase4_file_layout_<UTC>_<short-sha>
-   ```
-
-2. Verify that the new preflight reports `status = passed`,
-   `worktree_clean = true`, the frozen commit SHA, all 32 cells, the 16-to-1
-   file-count contrast, matching logical contents, resolved profiles, complete
-   infrastructure snapshots, and no snapshot errors.
-3. Launch the official comparison with a fresh single-use comparison ID and the
-   frozen preflight artifact:
-
-   ```bash
-   uv run python scripts/benchmarks/run_phase4_comparison.py \
-     --preflight-artifact <path-to-frozen-preflight.json>
-   ```
-
-4. Generate and validate the file-layout report. Stop for explicit acceptance;
-   do not treat the result as canonical and do not start executor sizing before
-   acceptance.
-5. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
+1. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
    locked hypothesis, so this experiment is required unless the user explicitly
    amends the hypothesis set and moves H3 to future work.
-6. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
+2. Stop for explicit acceptance of the H3 report.
+3. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
    thesis/report narrative from the accepted Phase 3 and Phase 4 evidence.
 
 ## Evaluation Dimensions
@@ -631,12 +631,12 @@ relative hybrid penalty. See
 
 Status:
 
-Design accepted on 2026-07-27; implementation and the untimed 32-cell
-implementation preflight passed on the same date. The official frozen preflight
-and timed comparison remain pending a clean committed worktree. This is
-explicitly a post-baseline experiment. The accepted baseline already
-has one data file per measured partition, so the experiment must not be
-described as improving or explaining that baseline.
+Completed and explicitly accepted on 2026-07-28. The official comparison
+completed all 486 paired steps and 1,944 cell executions with zero failures, and
+the automated report validation passed. This is explicitly a post-baseline
+experiment. The accepted baseline already has one data file per measured
+partition, so the result must not be described as improving or explaining that
+baseline.
 
 Problem:
 
@@ -728,8 +728,8 @@ Stop conditions:
 
 Status:
 
-Required to evaluate locked hypothesis H3, but blocked until the file-layout
-report is validated and explicitly accepted.
+Required to evaluate locked hypothesis H3 and unblocked by explicit acceptance
+of the file-layout report on 2026-07-28.
 
 Problem:
 
@@ -737,9 +737,17 @@ More local parallelism may not improve hybrid performance if the bottleneck beco
 
 Experiment:
 
-- small Spark profile
-- medium Spark profile
-- current/default Spark profile
+- small Spark profile: one 4-core executor (`spark.cores.max=4`)
+- medium Spark profile: two 4-core executors (`spark.cores.max=8`)
+- current/default Spark profile: three 4-core executors (`spark.cores.max=12`)
+- hold executor memory at 6 GiB, executor cores at four, worker hardware,
+  application code, S3 inputs, Glue catalog, and Iceberg table schemas constant
+- use `yellow 2011-01` and `green 2014-01`, with three complete repetitions
+  per sizing profile: 18 pipeline executions in six three-way paired blocks
+- rotate profile order across trial/workload blocks to limit order bias
+- use isolated `phase4_h3_silver`, `phase4_h3_quality`, and `phase4_h3_gold`
+  namespaces under warehouse prefix `warehouse/phase4_h3`; reuse `phase3/raw`
+  read-only and do not mutate the accepted Phase 3 tables
 
 Measure:
 
@@ -885,9 +893,8 @@ Tasks:
 - completed: pass the untimed implementation file-count and logical-equivalence
   preflight
 - completed: implement the automated file-layout validator/reporter
-- next: capture the clean frozen preflight and run the single-use file-layout
-  comparison
-- next: validate and explicitly accept the file-layout report
+- completed: run, validate, and explicitly accept the single-use file-layout
+  comparison and report
 - next: execute, validate, and explicitly accept the H3 Spark executor-sizing
   experiment
 - compare optimized vs unoptimized hybrid results across the accepted reports

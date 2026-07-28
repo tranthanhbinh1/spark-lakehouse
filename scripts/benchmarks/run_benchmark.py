@@ -694,6 +694,17 @@ def rendered_runs(
                         "application_name_stage": f"{dag_run_id}__stage",
                         "application_name_quality": f"{dag_run_id}__quality",
                         "application_name_gold": f"{dag_run_id}__gold",
+                        **(
+                            {
+                                "spark_cores_max": int(profile["spark"]["cores_max"]),
+                                "spark_executor_cores": int(
+                                    profile["spark"]["executor_cores"]
+                                ),
+                            }
+                            if profile["spark"].get("cores_max") is not None
+                            and profile["spark"].get("executor_cores") is not None
+                            else {}
+                        ),
                     },
                     "partition": partition,
                     "repetition": repetition,

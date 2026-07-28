@@ -35,6 +35,8 @@ HYBRID_AWS_SPARK_CONF = {
     "spark.sql.catalog.lakehouse_hybrid.s3.credentials-provider": (
         "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider"
     ),
+    "spark.cores.max": "{{ dag_run.conf.get('spark_cores_max', 12) }}",
+    "spark.executor.cores": "{{ dag_run.conf.get('spark_executor_cores', 4) }}",
 }
 
 
