@@ -36,7 +36,8 @@ def worker_capacity(profile: dict[str, Any]) -> dict[str, Any]:
     return {
         "alive_workers": int(payload.get("aliveworkers", 0)),
         "total_cores": int(payload.get("cores", 0)),
-        "free_cores": int(payload.get("coresfree", 0)),
+        "free_cores": int(payload.get("cores", 0))
+        - int(payload.get("coresused", 0)),
         "total_memory_mib": int(payload.get("memory", 0)),
         "active_applications": [
             {"id": app.get("id"), "name": app.get("name")}
