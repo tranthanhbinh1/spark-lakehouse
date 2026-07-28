@@ -479,14 +479,36 @@ Completed file-layout execution (accepted 2026-07-28):
   hybrid treatment, and no causal S3 request-count or write-cost claim is
   permitted
 
-Remaining steps:
+Completed H3 executor-sizing execution (accepted 2026-07-28):
 
-1. Execute and report the Spark executor-sizing experiment for H3. H3 remains a
-   locked hypothesis, so this experiment is required unless the user explicitly
-   amends the hypothesis set and moves H3 to future work.
-2. Stop for explicit acceptance of the H3 report.
-3. After the Phase 4 reports are accepted, enter Phase 5 and assemble the final
-   thesis/report narrative from the accepted Phase 3 and Phase 4 evidence.
+- frozen execution commit: `96aedac4c8977727d239441aee1f2e79d7385268`
+- official single-use comparison ID:
+  `h3_executor_sizing_20260728T131218Z_96aedac_official03`
+- final state:
+  `benchmarks/artifacts/comparisons/h3_executor_sizing_20260728T131218Z_96aedac_official03/comparison_run.json`
+- result: 18/18 pipeline executions in 6/6 three-way comparison blocks
+  completed in 43 minutes 49 seconds with zero failures
+- final report:
+  `docs/research_results/phase4_h3_executor_sizing_report.md`
+- validation: all automated identity, completeness, Spark-configuration,
+  artifact, database-metric, and success gates passed; the statistics artifact
+  contains 18 records and zero validation errors
+- observed result: increasing the allocation from 4 to 8 or 12 cores did not
+  improve median pipeline runtime for either workload, supporting a local
+  diminishing-return claim
+- interpretation limit: the experiment does not establish remote object storage
+  or network overhead as the causal bottleneck
+- acceptance: the user explicitly accepted the report on 2026-07-28
+
+Phase 4 completion:
+
+- both the file-layout and H3 executor-sizing reports are explicitly accepted
+- H3 is canonical and Phase 4, the final experimental phase, is complete
+
+Remaining step:
+
+1. Enter Phase 5 and assemble the final thesis/report narrative from the
+   accepted Phase 3 and Phase 4 evidence.
 
 ## Evaluation Dimensions
 
@@ -728,8 +750,8 @@ Stop conditions:
 
 Status:
 
-Required to evaluate locked hypothesis H3 and unblocked by explicit acceptance
-of the file-layout report on 2026-07-28.
+Official comparison completed, validated, and explicitly accepted on
+2026-07-28. H3 is canonical and Phase 4 experimental work is complete.
 
 Problem:
 
@@ -756,10 +778,21 @@ Measure:
 - resource use
 - diminishing returns
 
-Because H3 is part of the locked hypothesis set, this experiment is required for
-a complete evaluation. It may be omitted only after an explicit scope amendment
-that marks H3 as untested and moves it to future work; lack of time alone does
-not justify silently retaining an untested hypothesis.
+Observed official result (accepted 2026-07-28):
+
+- green median runtime was 94.118 seconds at 4 cores, 100.007 seconds at 8
+  cores, and 99.330 seconds at 12 cores
+- yellow median runtime was 159.632 seconds at 4 cores, 162.503 seconds at 8
+  cores, and 162.819 seconds at 12 cores
+- additional cores did not improve median pipeline runtime for either workload;
+  this supports the performance plateau/diminishing-return part of H3
+- the experiment cannot identify S3 or network overhead as the cause of the
+  plateau
+
+H3 was part of the locked hypothesis set, and its accepted execution closes the
+required experiment. The evidence supports the performance-plateau component;
+remote object storage or network overhead must remain an unproven causal
+explanation in Phase 5.
 
 ## Workloads
 
@@ -895,22 +928,27 @@ Tasks:
 - completed: implement the automated file-layout validator/reporter
 - completed: run, validate, and explicitly accept the single-use file-layout
   comparison and report
-- next: execute, validate, and explicitly accept the H3 Spark executor-sizing
-  experiment
-- compare optimized vs unoptimized hybrid results across the accepted reports
+- completed: execute and validate the H3 Spark executor-sizing experiment and
+  generate its report
+- completed: explicitly accept the H3 executor-sizing report
+- next: compare optimized vs unoptimized hybrid results across the accepted
+  reports in Phase 5
 
 Completion rule:
 
-Phase 4 is the final experimental phase. It is complete only after the
-file-layout report and H3 executor-sizing report are explicitly accepted, or
-after an explicit hypothesis amendment moves H3 to future work. Phase 5 still
-remains for synthesis and thesis/report production.
+Phase 4 is the final experimental phase. Its completion condition was satisfied
+on 2026-07-28 when both the file-layout and H3 executor-sizing reports had been
+explicitly accepted. Phase 5 remains for synthesis and thesis/report production.
 
 Output:
 
 - optimization impact analysis
 
 ### Phase 5: Thesis Write-up
+
+Status:
+
+Unblocked by explicit acceptance of both Phase 4 reports on 2026-07-28.
 
 Goal:
 
