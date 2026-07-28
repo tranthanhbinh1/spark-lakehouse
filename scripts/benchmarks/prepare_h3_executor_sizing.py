@@ -38,6 +38,10 @@ def worker_capacity(profile: dict[str, Any]) -> dict[str, Any]:
         "total_cores": int(payload.get("cores", 0)),
         "free_cores": int(payload.get("coresfree", 0)),
         "total_memory_mib": int(payload.get("memory", 0)),
+        "active_applications": [
+            {"id": app.get("id"), "name": app.get("name")}
+            for app in payload.get("activeapps", [])
+        ],
         "workers": [
             {
                 "id": worker.get("id"),
@@ -123,8 +127,13 @@ def main() -> int:
             spark_sql(profile, statement)
     namespace_evidence = verify_namespace_locations(profile)
     capacity = worker_capacity(profile)
-    if capacity["alive_workers"] != 3 or capacity["total_cores"] != 12:
-        errors.append(f"Expected three workers and 12 cores, observed {capacity}")
+    if (
+        capacity["alive_workers"] != 3
+        or capacity["total_cores"] != 12
+        or capacity["free_cores"] != 12
+        or capacity["active_applications"]
+    ):
+        errors.append(f"Expected an idle three-worker 12-core cluster, observed {capacity}")
     inputs = validate_inputs(profile, spec)
     if any(item["size_bytes"] <= 0 for item in inputs):
         errors.append("An H3 input object is empty")
