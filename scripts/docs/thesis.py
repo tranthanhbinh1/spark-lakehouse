@@ -7,13 +7,16 @@ import argparse
 import hashlib
 import json
 import re
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "docs/master_thesis_report.md"
@@ -30,6 +33,12 @@ FINAL_DOCX = BUILD_DIR / "master_thesis.docx"
 FINAL_PDF = BUILD_DIR / "master_thesis.pdf"
 MANIFEST = BUILD_DIR / "build-manifest.json"
 VISUAL_REVIEW = BUILD_DIR / "visual-review.json"
+
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+W = f"{{{W_NS}}}"
+ET.register_namespace("w", W_NS)
+TABLE_INDEX_TOKEN = "THESIS_TABLE_INDEX_PLACEHOLDER"
+FIGURE_INDEX_TOKEN = "THESIS_FIGURE_INDEX_PLACEHOLDER"
 
 EXPECTED_PANDOC = "3.10.1"
 EXPECTED_LIBREOFFICE_PREFIX = "24.2"
@@ -320,6 +329,428 @@ def tool_versions() -> dict[str, str]:
     return {"pandoc": pandoc, "libreoffice": libreoffice}
 
 
+def paragraph_text(element: ET.Element) -> str:
+    return "".join(node.text or "" for node in element.findall(f".//{W}t")).strip()
+
+
+def set_paragraph_style(element: ET.Element, style_id: str) -> None:
+    properties = element.find(f"./{W}pPr")
+    if properties is None:
+        properties = ET.Element(f"{W}pPr")
+        element.insert(0, properties)
+    style = properties.find(f"./{W}pStyle")
+    if style is None:
+        style = ET.Element(f"{W}pStyle")
+        properties.insert(0, style)
+    style.set(f"{W}val", style_id)
+
+
+def set_page_break_before(element: ET.Element) -> None:
+    properties = element.find(f"./{W}pPr")
+    if properties is None:
+        properties = ET.Element(f"{W}pPr")
+        element.insert(0, properties)
+    if properties.find(f"./{W}pageBreakBefore") is None:
+        properties.append(ET.Element(f"{W}pageBreakBefore"))
+
+
+def token_paragraph(token: str, *, page_break: bool = False) -> ET.Element:
+    paragraph = ET.Element(f"{W}p")
+    if page_break:
+        set_page_break_before(paragraph)
+    run = ET.SubElement(paragraph, f"{W}r")
+    text = ET.SubElement(run, f"{W}t")
+    text.text = token
+    return paragraph
+
+
+def remove_descendants(element: ET.Element, tag: str) -> None:
+    for parent in element.iter():
+        for child in list(parent):
+            if child.tag == f"{W}{tag}":
+                parent.remove(child)
+
+
+def clone_style(
+    styles_root: ET.Element,
+    source_id: str,
+    target_id: str,
+    display_name: str,
+    *,
+    remove_outline: bool = False,
+) -> None:
+    source = styles_root.find(f".//{W}style[@{W}styleId='{source_id}']")
+    if source is None:
+        raise RuntimeError(f"DOCX style {source_id} is missing")
+    clone = ET.fromstring(ET.tostring(source))
+    clone.set(f"{W}styleId", target_id)
+    name = clone.find(f"./{W}name")
+    if name is None:
+        name = ET.Element(f"{W}name")
+        clone.insert(0, name)
+    name.set(f"{W}val", display_name)
+    remove_descendants(clone, "numPr")
+    if remove_outline:
+        remove_descendants(clone, "outlineLvl")
+    styles_root.append(clone)
+
+
+def add_pandoc_compact_style(styles_root: ET.Element) -> None:
+    if styles_root.find(f".//{W}style[@{W}styleId='Compact']") is not None:
+        return
+    style = ET.Element(
+        f"{W}style",
+        {f"{W}type": "paragraph", f"{W}customStyle": "1", f"{W}styleId": "Compact"},
+    )
+    ET.SubElement(style, f"{W}name", {f"{W}val": "Compact"})
+    ET.SubElement(style, f"{W}basedOn", {f"{W}val": "BodyText"})
+    ET.SubElement(style, f"{W}qFormat")
+    properties = ET.SubElement(style, f"{W}pPr")
+    ET.SubElement(properties, f"{W}spacing", {f"{W}after": "36", f"{W}before": "36"})
+    styles_root.append(style)
+
+
+def strip_template_numbering(styles_root: ET.Element) -> None:
+    for style_id in ("Heading2", "Heading3"):
+        style = styles_root.find(f".//{W}style[@{W}styleId='{style_id}']")
+        if style is not None:
+            remove_descendants(style, "numPr")
+
+
+def replace_between(
+    body: ET.Element,
+    start_text: str,
+    end_text: str,
+    replacements: list[ET.Element],
+    *,
+    include_start: bool,
+) -> None:
+    children = list(body)
+    start = next(
+        index
+        for index, child in enumerate(children)
+        if paragraph_text(child) == start_text
+    )
+    end = next(
+        index
+        for index, child in enumerate(children[start + 1 :], start + 1)
+        if paragraph_text(child) == end_text
+    )
+    first = start if include_start else start + 1
+    for child in children[first:end]:
+        body.remove(child)
+    for offset, replacement in enumerate(replacements):
+        body.insert(first + offset, replacement)
+
+
+def add_section_to_previous_paragraph(
+    body: ET.Element, heading_text: str, section: ET.Element
+) -> None:
+    children = list(body)
+    heading_index = next(
+        index
+        for index, child in enumerate(children)
+        if paragraph_text(child) == heading_text
+    )
+    previous = next(
+        child for child in reversed(children[:heading_index]) if child.tag == f"{W}p"
+    )
+    properties = previous.find(f"./{W}pPr")
+    if properties is None:
+        properties = ET.Element(f"{W}pPr")
+        previous.insert(0, properties)
+    old = properties.find(f"./{W}sectPr")
+    if old is not None:
+        properties.remove(old)
+    properties.append(ET.fromstring(ET.tostring(section)))
+
+
+def normalize_docx_tables(document: ET.Element) -> None:
+    """Make Pandoc tables portable to LibreOffice and the university template."""
+    for table in document.findall(f".//{W}tbl"):
+        properties = table.find(f"./{W}tblPr")
+        if properties is None:
+            properties = ET.Element(f"{W}tblPr")
+            table.insert(0, properties)
+        style = properties.find(f"./{W}tblStyle")
+        if style is None:
+            style = ET.Element(f"{W}tblStyle")
+            properties.insert(0, style)
+        # Pandoc requests style "Table", which the supplied template does not
+        # define. LibreOffice then imports its cells as vertically stacked text.
+        style.set(f"{W}val", "TableGrid")
+
+        grid = table.find(f"./{W}tblGrid")
+        columns = [] if grid is None else grid.findall(f"./{W}gridCol")
+        widths = [int(column.get(f"{W}w", "1")) for column in columns]
+        if not widths:
+            continue
+        target_width = 9000
+        scale = target_width / sum(widths)
+        normalized = [max(360, round(width * scale)) for width in widths]
+        normalized[-1] += target_width - sum(normalized)
+        for column, width in zip(columns, normalized, strict=True):
+            column.set(f"{W}w", str(width))
+
+        table_width = properties.find(f"./{W}tblW")
+        if table_width is None:
+            table_width = ET.SubElement(properties, f"{W}tblW")
+        table_width.set(f"{W}type", "dxa")
+        table_width.set(f"{W}w", str(target_width))
+        layout = properties.find(f"./{W}tblLayout")
+        if layout is None:
+            layout = ET.SubElement(properties, f"{W}tblLayout")
+        layout.set(f"{W}type", "fixed")
+
+        for row in table.findall(f"./{W}tr"):
+            cells = row.findall(f"./{W}tc")
+            for cell, width in zip(cells, normalized, strict=False):
+                cell_properties = cell.find(f"./{W}tcPr")
+                if cell_properties is None:
+                    cell_properties = ET.Element(f"{W}tcPr")
+                    cell.insert(0, cell_properties)
+                cell_width = cell_properties.find(f"./{W}tcW")
+                if cell_width is None:
+                    cell_width = ET.Element(f"{W}tcW")
+                    cell_properties.insert(0, cell_width)
+                cell_width.set(f"{W}type", "dxa")
+                cell_width.set(f"{W}w", str(width))
+
+
+def finalize_docx_structure(raw_docx: Path, output_docx: Path) -> None:
+    with ZipFile(raw_docx) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    with ZipFile(TEMPLATE) as archive:
+        template_document = ET.fromstring(archive.read("word/document.xml"))
+
+    document = ET.fromstring(parts["word/document.xml"])
+    styles = ET.fromstring(parts["word/styles.xml"])
+    body = document.find(f"./{W}body")
+    template_body = template_document.find(f"./{W}body")
+    if body is None or template_body is None:
+        raise RuntimeError("DOCX document body is missing")
+
+    sections = template_body.findall(f".//{W}sectPr")
+    if len(sections) != 3:
+        raise RuntimeError("University template no longer has exactly three sections")
+
+    strip_template_numbering(styles)
+    add_pandoc_compact_style(styles)
+    normalize_docx_tables(document)
+    clone_style(styles, "Caption", "TableCaption", "Table Caption")
+    clone_style(styles, "Caption", "FigureCaption", "Figure Caption")
+    clone_style(
+        styles, "Heading1", "CoverHeading1", "Cover Heading 1", remove_outline=True
+    )
+    clone_style(
+        styles, "Heading2", "CoverHeading2", "Cover Heading 2", remove_outline=True
+    )
+
+    native_toc = next((child for child in list(body) if child.tag == f"{W}sdt"), None)
+    if native_toc is None:
+        raise RuntimeError("Pandoc did not create a native table of contents")
+    body.remove(native_toc)
+    replace_between(
+        body,
+        "TABLE OF CONTENTS",
+        "ACKNOWLEDGEMENTS",
+        [token_paragraph("", page_break=True), native_toc],
+        include_start=True,
+    )
+    replace_between(
+        body,
+        "LIST OF TABLES",
+        "LIST OF FIGURES",
+        [token_paragraph(TABLE_INDEX_TOKEN)],
+        include_start=False,
+    )
+    replace_between(
+        body,
+        "LIST OF FIGURES",
+        "ABSTRACT",
+        [token_paragraph(FIGURE_INDEX_TOKEN)],
+        include_start=False,
+    )
+
+    cover_styles = {
+        "UNIVERSITY OF SCIENCE AND TECHNOLOGY OF HANOI": "CoverHeading1",
+        "DEPARTMENT OF INFORMATION AND COMMUNICATION TECHNOLOGY": "CoverHeading2",
+        "MASTER THESIS": "CoverHeading1",
+        "Trade-off Analysis and Optimization of a Hybrid Lakehouse Architecture Using Cloud Object Storage and Metadata Catalogs": "CoverHeading2",
+        "SUPERVISOR CERTIFICATION": "CoverHeading1",
+    }
+    page_break_headings = {
+        "SUPERVISOR CERTIFICATION",
+        "LIST OF ABBREVIATIONS",
+        "LIST OF TABLES",
+        "LIST OF FIGURES",
+        "ABSTRACT",
+        "II. OBJECTIVES",
+        "III. MATERIALS AND METHODS",
+        "IV. RESULTS AND DISCUSSION",
+        "V. CONCLUSION AND PERSPECTIVE",
+        "REFERENCES",
+        "APPENDICES",
+    }
+    in_research_body = False
+    for element in list(body):
+        text = paragraph_text(element)
+        if text in cover_styles:
+            set_paragraph_style(element, cover_styles[text])
+        if text == "I. INTRODUCTION":
+            in_research_body = True
+        if in_research_body and re.match(r"^Table \d+\.", text):
+            set_paragraph_style(element, "TableCaption")
+        elif in_research_body and re.match(r"^Figure \d+\.", text):
+            set_paragraph_style(element, "FigureCaption")
+        if text in page_break_headings:
+            set_page_break_before(element)
+
+    add_section_to_previous_paragraph(body, "ACKNOWLEDGEMENTS", sections[0])
+    add_section_to_previous_paragraph(body, "I. INTRODUCTION", sections[1])
+    final_section = body.find(f"./{W}sectPr")
+    if final_section is not None:
+        body.remove(final_section)
+    body.append(ET.fromstring(ET.tostring(sections[2])))
+
+    parts["word/document.xml"] = ET.tostring(
+        document, encoding="utf-8", xml_declaration=True
+    )
+    parts["word/styles.xml"] = ET.tostring(
+        styles, encoding="utf-8", xml_declaration=True
+    )
+    with ZipFile(output_docx, "w", compression=ZIP_DEFLATED) as archive:
+        for name, content in parts.items():
+            archive.writestr(name, content)
+
+
+def uno_finalize(docx: Path, pdf: Path, port: int) -> int:
+    try:
+        import uno
+        from com.sun.star.beans import PropertyValue
+    except ImportError:
+        print("UNO bridge is unavailable in this Python interpreter", file=sys.stderr)
+        return 1
+
+    local_context = uno.getComponentContext()
+    resolver = local_context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.bridge.UnoUrlResolver", local_context
+    )
+    remote_context = None
+    for _ in range(100):
+        try:
+            remote_context = resolver.resolve(
+                f"uno:socket,host=localhost,port={port};urp;StarOffice.ComponentContext"
+            )
+            break
+        except Exception:
+            time.sleep(0.1)
+    if remote_context is None:
+        print("Could not connect to the LibreOffice UNO listener", file=sys.stderr)
+        return 1
+
+    service_manager = remote_context.ServiceManager
+    desktop = service_manager.createInstanceWithContext(
+        "com.sun.star.frame.Desktop", remote_context
+    )
+    hidden = PropertyValue()
+    hidden.Name = "Hidden"
+    hidden.Value = True
+    document = desktop.loadComponentFromURL(
+        uno.systemPathToFileUrl(str(docx)), "_blank", 0, (hidden,)
+    )
+    if document is None:
+        print("LibreOffice could not open the generated DOCX", file=sys.stderr)
+        return 1
+
+    def insert_caption_index(token: str, style_name: str) -> None:
+        descriptor = document.createSearchDescriptor()
+        descriptor.SearchString = token
+        match = document.findFirst(descriptor)
+        if match is None:
+            raise RuntimeError(f"Missing DOCX index placeholder: {token}")
+        index = document.createInstance("com.sun.star.text.ContentIndex")
+        index.Title = ""
+        index.Level = 1
+        index.CreateFromOutline = False
+        index.CreateFromMarks = False
+        index.CreateFromLevelParagraphStyles = True
+        uno.invoke(
+            index.LevelParagraphStyles,
+            "replaceByIndex",
+            (0, uno.Any("[]string", (style_name,))),
+        )
+        match.Text.insertTextContent(match, index, True)
+
+    try:
+        insert_caption_index(TABLE_INDEX_TOKEN, "Table Caption")
+        insert_caption_index(FIGURE_INDEX_TOKEN, "Figure Caption")
+        indexes = document.getDocumentIndexes()
+        for index_number in range(indexes.getCount()):
+            indexes.getByIndex(index_number).update()
+        document.getTextFields().refresh()
+        document.store()
+        pdf_filter = PropertyValue()
+        pdf_filter.Name = "FilterName"
+        pdf_filter.Value = "writer_pdf_Export"
+        document.storeToURL(uno.systemPathToFileUrl(str(pdf)), (pdf_filter,))
+    finally:
+        document.close(True)
+        desktop.terminate()
+    return 0
+
+
+def libreoffice_finalize(docx: Path, pdf: Path) -> list[str]:
+    system_python = Path("/usr/bin/python3")
+    if not system_python.exists():
+        raise RuntimeError("System Python required for LibreOffice UNO is missing")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    with tempfile.TemporaryDirectory(prefix="thesis-lo-") as profile:
+        profile_uri = Path(profile).resolve().as_uri()
+        listener_command = [
+            "libreoffice",
+            "--headless",
+            f"-env:UserInstallation={profile_uri}",
+            f"--accept=socket,host=localhost,port={port};urp;StarOffice.ComponentContext",
+            "--norestore",
+            "--nodefault",
+            "--nofirststartwizard",
+        ]
+        process = subprocess.Popen(
+            listener_command,
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        command = [
+            str(system_python),
+            str(Path(__file__).resolve()),
+            "_uno-finalize",
+            "--docx",
+            str(docx),
+            "--pdf",
+            str(pdf),
+            "--port",
+            str(port),
+        ]
+        try:
+            completed = run(command)
+        finally:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                process.wait(timeout=10)
+        if completed.stderr.strip():
+            print(completed.stderr.strip(), file=sys.stderr)
+        if not pdf.exists():
+            raise RuntimeError("LibreOffice UNO export did not create the PDF")
+        return listener_command
+
+
 def check_submission() -> CheckResult:
     result = check_content()
     if result.errors:
@@ -432,47 +863,38 @@ def build() -> int:
     render_source = SOURCE.read_text(encoding="utf-8").replace(
         "thesis/architecture.svg", str(DERIVED_FIGURE)
     )
+    # Markdown thematic breaks are source separators, not pagination commands.
+    # The university reference document maps them to hard page breaks, so remove
+    # them only from the derived render source and add controlled breaks below.
+    render_source = re.sub(r"(?m)^---\s*$", "", render_source)
     temporary_source = BUILD_DIR / ".master_thesis.render.md"
     temporary_source.write_text(render_source, encoding="utf-8")
-    command = [
-        "pandoc",
-        str(temporary_source),
-        "--from=markdown",
-        "--to=docx",
-        "--standalone",
-        "--citeproc",
-        f"--bibliography={BIBLIOGRAPHY}",
-        f"--csl={CSL}",
-        f"--resource-path={SOURCE.parent}",
-        f"--reference-doc={TEMPLATE}",
-        "--metadata=link-citations:true",
-        f"--output={GENERATED_DOCX}",
-    ]
-    try:
-        completed = run(command)
-    finally:
-        temporary_source.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="thesis-docx-") as temporary_directory:
+        raw_docx = Path(temporary_directory) / "pandoc.docx"
+        command = [
+            "pandoc",
+            str(temporary_source),
+            "--from=markdown",
+            "--to=docx",
+            "--standalone",
+            "--toc",
+            "--toc-depth=3",
+            "--citeproc",
+            f"--bibliography={BIBLIOGRAPHY}",
+            f"--csl={CSL}",
+            f"--resource-path={SOURCE.parent}",
+            f"--reference-doc={TEMPLATE}",
+            "--metadata=link-citations:true",
+            f"--output={raw_docx}",
+        ]
+        try:
+            completed = run(command)
+            finalize_docx_structure(raw_docx, GENERATED_DOCX)
+        finally:
+            temporary_source.unlink(missing_ok=True)
     if completed.stderr.strip():
         print(completed.stderr.strip(), file=sys.stderr)
-
-    with tempfile.TemporaryDirectory(prefix="thesis-lo-") as profile:
-        profile_uri = Path(profile).resolve().as_uri()
-        converted = run(
-            [
-                "libreoffice",
-                "--headless",
-                f"-env:UserInstallation={profile_uri}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(BUILD_DIR),
-                str(GENERATED_DOCX),
-            ]
-        )
-        if converted.stdout.strip():
-            print(converted.stdout.strip())
-        if converted.stderr.strip():
-            print(converted.stderr.strip(), file=sys.stderr)
+    libreoffice_command = libreoffice_finalize(GENERATED_DOCX, GENERATED_PDF)
     if not GENERATED_PDF.exists():
         writer_module = Path("/usr/lib/libreoffice/program/libswdlo.so")
         if not writer_module.exists():
@@ -526,14 +948,8 @@ def build() -> int:
                 for item in command
             ],
             "libreoffice": [
-                "libreoffice",
-                "--headless",
-                "-env:UserInstallation=<temporary-profile>",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(BUILD_DIR),
-                str(GENERATED_DOCX),
+                "<LibreOffice UNO listener and system Python field refresh>",
+                *libreoffice_command,
             ],
         },
         "artifacts": {
@@ -560,9 +976,15 @@ def main() -> int:
         "--gate", required=True, choices=("content", "submission")
     )
     subparsers.add_parser("build", help="build generated DOCX and PDF artifacts")
+    uno_parser = subparsers.add_parser("_uno-finalize", help=argparse.SUPPRESS)
+    uno_parser.add_argument("--docx", required=True, type=Path)
+    uno_parser.add_argument("--pdf", required=True, type=Path)
+    uno_parser.add_argument("--port", required=True, type=int)
     args = parser.parse_args()
     if args.command == "build":
         return build()
+    if args.command == "_uno-finalize":
+        return uno_finalize(args.docx, args.pdf, args.port)
     result = check_content() if args.gate == "content" else check_submission()
     return print_result(args.gate, result)
 

@@ -6,21 +6,19 @@
 
 # MASTER THESIS
 
-**Student:** `<TODO: Student name>`  
-**Student ID:** `<TODO: Student ID>`  
-**Major:** `<TODO: Major>`
+**Student:** Tran Ngoc Thanh Binh
+
+**Student ID:** ________________________________________
+
+**Major:** ICT
 
 ## Trade-off Analysis and Optimization of a Hybrid Lakehouse Architecture Using Cloud Object Storage and Metadata Catalogs
 
-**External Supervisor:** `<TODO: External supervisor>`  
-**Internal Supervisor:** `<TODO: Internal supervisor>`
+**External Supervisor:** ________________________________________
 
-**Hanoi, `<TODO: Month 2026>`**
+**Internal Supervisor:** Dr. Giang Anh Tuan
 
-> **Draft status — 28 July 2026:** Phase 5 synthesis draft. It incorporates
-> the accepted Phase 3 baseline, partition-pruning analysis, controlled
-> file-layout experiment, and H3 executor-sizing experiment. Personal details,
-> acknowledgements, and university formatting remain incomplete.
+**Hanoi, July 2026**
 
 ---
 
@@ -28,15 +26,15 @@
 
 To whom it may concern,
 
-I, `<TODO: Supervisor name>`, certify that the thesis/internship report of
-Mr/Ms. `<TODO: Student name>` is qualified to be presented to the appropriate
+I, Dr. Giang Anh Tuan, certify that the thesis/internship report of
+Mr. Tran Ngoc Thanh Binh is qualified to be presented to the appropriate
 USTH jury.
 
-Hanoi, `<TODO: Date>`
+Hanoi, 31 July 2026
 
 **Supervisor's signature**
 
-`<TODO: Signature>`
+________________________________________
 
 ---
 
@@ -59,31 +57,40 @@ Hanoi, `<TODO: Date>`
 
 # ACKNOWLEDGEMENTS
 
-`<TODO: Add acknowledgements for supervisors, the host laboratory or company,
-USTH staff, colleagues, friends, and family. Do not retain this instruction in
-the submitted version.>`
+I would like to express my sincere gratitude to my internal supervisor,
+Dr. Giang Anh Tuan, for his guidance, constructive feedback, and support
+throughout this research. His advice was essential in refining the research
+questions, experimental methodology, and interpretation of the results.
+
+I also thank the lecturers and staff of the University of Science and
+Technology of Hanoi, particularly the Department of Information and
+Communication Technology, for providing the academic environment and knowledge
+that made this thesis possible. I am grateful to my colleagues and friends for
+their technical discussions, encouragement, and practical assistance during
+the implementation and benchmarking work.
+
+Finally, I would like to thank my family for their patience, understanding, and
+continued support throughout my studies and the preparation of this thesis.
 
 ---
 
 # LIST OF ABBREVIATIONS
 
-| Abbreviation | Meaning |
-| --- | --- |
-| ACID | Atomicity, Consistency, Isolation, Durability |
-| API | Application Programming Interface |
-| AWS | Amazon Web Services |
-| CPU | Central Processing Unit |
-| DAG | Directed Acyclic Graph |
-| ETL | Extract, Transform, Load |
-| GiB | Gibibyte |
-| H1–H3 | Research hypotheses 1 to 3 |
-| IAM | Identity and Access Management |
-| IQR | Interquartile Range |
-| NYC TLC | New York City Taxi and Limousine Commission |
-| RQ1–RQ2 | Research questions 1 and 2 |
-| S3 | Amazon Simple Storage Service |
-| SQL | Structured Query Language |
-| USTH | University of Science and Technology of Hanoi |
+- **ACID** — Atomicity, Consistency, Isolation, Durability
+- **API** — Application Programming Interface
+- **AWS** — Amazon Web Services
+- **CPU** — Central Processing Unit
+- **DAG** — Directed Acyclic Graph
+- **ETL** — Extract, Transform, Load
+- **GiB** — Gibibyte
+- **H1–H3** — Research hypotheses 1 to 3
+- **IAM** — Identity and Access Management
+- **IQR** — Interquartile Range
+- **NYC TLC** — New York City Taxi and Limousine Commission
+- **RQ1–RQ2** — Research questions 1 and 2
+- **S3** — Amazon Simple Storage Service
+- **SQL** — Structured Query Language
+- **USTH** — University of Science and Technology of Hanoi
 
 ---
 
@@ -1199,15 +1206,3 @@ AWS identity, input objects, and retained comparison identifier.
 | Remote object storage or network overhead caused the H3 plateau | Not causally established |
 | Hybrid storage is cheaper overall | Not measured |
 | AWS durability exceeded the local system during the experiment | Not experimentally tested |
-
-## Appendix 3. Required updates before submission
-
-- Replace every personal or institutional `TODO`.
-- Replace the acknowledgement placeholder.
-- Reconcile AWS Cost Explorer totals only if a broader cost claim is required.
-- Verify reference formatting, access dates, and university citation style.
-- Render and inspect the Mermaid architecture figure in the final PDF
-  toolchain.
-- Apply the university's final typography, pagination, margins, signature
-  pages, and automatic list-of-table/list-of-figure formatting.
-- Perform a final cross-reference and page-number audit after typesetting.
