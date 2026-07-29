@@ -108,7 +108,7 @@ In client mode, Spark executors must connect back to the driver running inside t
 The driver initially advertised an unreachable container hostname/IP. We fixed this by passing Spark driver networking config from the DAG:
 
 ```python
-conf={
+conf = {
     "spark.driver.bindAddress": "0.0.0.0",
     "spark.driver.host": "airflow-airflow-worker-1",
 }
@@ -309,8 +309,8 @@ green_trips_simulated_arrival
 They run daily with:
 
 ```python
-catchup=False
-max_active_runs=1
+catchup = False
+max_active_runs = 1
 ```
 
 Instead of using Airflow logical date as the historical taxi month, the DAGs track the next partition through Airflow Variables:

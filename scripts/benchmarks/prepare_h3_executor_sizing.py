@@ -36,8 +36,7 @@ def worker_capacity(profile: dict[str, Any]) -> dict[str, Any]:
     return {
         "alive_workers": int(payload.get("aliveworkers", 0)),
         "total_cores": int(payload.get("cores", 0)),
-        "free_cores": int(payload.get("cores", 0))
-        - int(payload.get("coresused", 0)),
+        "free_cores": int(payload.get("cores", 0)) - int(payload.get("coresused", 0)),
         "total_memory_mib": int(payload.get("memory", 0)),
         "active_applications": [
             {"id": app.get("id"), "name": app.get("name")}
@@ -83,7 +82,9 @@ def validate_profiles(spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     return base, errors
 
 
-def validate_inputs(profile: dict[str, Any], spec: dict[str, Any]) -> list[dict[str, Any]]:
+def validate_inputs(
+    profile: dict[str, Any], spec: dict[str, Any]
+) -> list[dict[str, Any]]:
     store = profile["object_store"]
     s3 = client(profile)
     records = []
@@ -109,7 +110,9 @@ def validate_inputs(profile: dict[str, Any], spec: dict[str, Any]) -> list[dict[
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Prepare and validate isolated H3 tables.")
+    parser = argparse.ArgumentParser(
+        description="Prepare and validate isolated H3 tables."
+    )
     parser.add_argument(
         "--comparison",
         type=Path,
@@ -134,7 +137,9 @@ def main() -> int:
         or capacity["free_cores"] != 12
         or capacity["active_applications"]
     ):
-        errors.append(f"Expected an idle three-worker 12-core cluster, observed {capacity}")
+        errors.append(
+            f"Expected an idle three-worker 12-core cluster, observed {capacity}"
+        )
     inputs = validate_inputs(profile, spec)
     if any(item["size_bytes"] <= 0 for item in inputs):
         errors.append("An H3 input object is empty")
