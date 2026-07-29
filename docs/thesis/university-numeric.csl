@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text" default-locale="en-US">
+  <info>
+    <title>USTH numeric thesis style</title>
+    <id>https://usth.edu.vn/styles/numeric-thesis</id>
+    <link href="https://usth.edu.vn/styles/numeric-thesis" rel="self"/>
+    <summary>Square-bracket numeric citations ordered by first appearance.</summary>
+    <updated>2026-07-29T00:00:00+00:00</updated>
+    <rights license="http://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</rights>
+  </info>
+  <macro name="author">
+    <names variable="author">
+      <name initialize-with=". " name-as-sort-order="all" and="text" delimiter=", " delimiter-precedes-last="always"/>
+      <substitute>
+        <names variable="editor"/>
+        <text variable="publisher"/>
+        <text variable="title"/>
+      </substitute>
+    </names>
+  </macro>
+  <macro name="title">
+    <choose>
+      <if type="book report thesis manual" match="any">
+        <text variable="title" font-style="italic"/>
+      </if>
+      <else>
+        <text variable="title" quotes="true"/>
+      </else>
+    </choose>
+  </macro>
+  <macro name="container">
+    <choose>
+      <if type="article-journal">
+        <group delimiter=", ">
+          <text variable="container-title" font-style="italic"/>
+          <group>
+            <text term="volume" form="short" suffix=" "/>
+            <text variable="volume"/>
+          </group>
+          <group>
+            <text term="issue" form="short" suffix=" "/>
+            <text variable="issue"/>
+          </group>
+        </group>
+      </if>
+      <else-if type="paper-conference">
+        <text variable="container-title" font-style="italic"/>
+      </else-if>
+    </choose>
+  </macro>
+  <macro name="issued">
+    <date variable="issued">
+      <date-part name="year"/>
+    </date>
+  </macro>
+  <macro name="locator">
+    <choose>
+      <if variable="page">
+        <group delimiter=" ">
+          <label variable="page" form="short"/>
+          <text variable="page"/>
+        </group>
+      </if>
+    </choose>
+  </macro>
+  <macro name="access">
+    <choose>
+      <if variable="DOI">
+        <text variable="DOI" prefix="https://doi.org/"/>
+      </if>
+      <else-if variable="URL">
+        <group delimiter=" ">
+          <text variable="URL"/>
+          <group prefix="(accessed " suffix=")">
+            <date variable="accessed">
+              <date-part name="day" suffix=" "/>
+              <date-part name="month" form="long" suffix=" "/>
+              <date-part name="year"/>
+            </date>
+          </group>
+        </group>
+      </else-if>
+    </choose>
+  </macro>
+  <citation collapse="citation-number">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout prefix="[" suffix="]" delimiter=",">
+      <text variable="citation-number"/>
+    </layout>
+  </citation>
+  <bibliography entry-spacing="1" second-field-align="flush">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout suffix=".">
+      <text variable="citation-number" prefix="[" suffix="]"/>
+      <group delimiter=", " suffix=".">
+        <text macro="author"/>
+        <text macro="title"/>
+        <text macro="container"/>
+        <text macro="locator"/>
+        <text macro="issued"/>
+      </group>
+      <text macro="access" prefix=" "/>
+    </layout>
+  </bibliography>
+</style>

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Experimental architecture and treatment boundary</title>
+  <desc id="desc">Local Airflow orchestrates local Spark and Trino. The controlled compute layer connects either to local MinIO and catalog services or to Amazon S3 and AWS Glue Data Catalog. Both paths use Apache Iceberg version 2 tables.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 2; rx: 10; }
+      .control { fill: #e0f2fe; stroke: #0369a1; }
+      .local { fill: #ecfdf5; stroke: #047857; }
+      .hybrid { fill: #fff7ed; stroke: #c2410c; }
+      .label { font: 600 22px sans-serif; fill: #0f172a; text-anchor: middle; }
+      .small { font: 18px sans-serif; fill: #334155; text-anchor: middle; }
+      .edge { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .boundary { fill: none; stroke: #64748b; stroke-width: 2; stroke-dasharray: 10 8; rx: 18; }
+    </style>
+  </defs>
+  <rect class="boundary" x="45" y="30" width="1110" height="250"/>
+  <text class="small" x="170" y="62">Controlled local compute</text>
+  <rect class="box control" x="90" y="95" width="260" height="110"/>
+  <text class="label" x="220" y="140">Apache Airflow</text>
+  <text class="small" x="220" y="174">local orchestration</text>
+  <rect class="box control" x="470" y="70" width="260" height="90"/>
+  <text class="label" x="600" y="108">Apache Spark 3.5.6</text>
+  <text class="small" x="600" y="137">local processing</text>
+  <rect class="box control" x="470" y="185" width="260" height="70"/>
+  <text class="label" x="600" y="228">Trino</text>
+  <path class="edge" d="M350 130 L460 112"/>
+  <path class="edge" d="M350 170 L460 215"/>
+  <rect class="box local" x="90" y="360" width="390" height="120"/>
+  <text class="label" x="285" y="405">On-premises control</text>
+  <text class="small" x="285" y="439">MinIO-compatible storage + local catalog</text>
+  <rect class="box hybrid" x="720" y="360" width="390" height="120"/>
+  <text class="label" x="915" y="405">Hybrid treatment</text>
+  <text class="small" x="915" y="439">Amazon S3 + AWS Glue Data Catalog</text>
+  <path class="edge" d="M560 255 C535 315, 410 320, 350 352"/>
+  <path class="edge" d="M640 255 C670 315, 795 320, 850 352"/>
+  <rect class="box" x="365" y="535" width="470" height="65"/>
+  <text class="label" x="600" y="576">Apache Iceberg v2 tables (same logical data)</text>
+  <path class="edge" d="M285 480 C330 525, 425 520, 475 532"/>
+  <path class="edge" d="M915 480 C870 525, 775 520, 725 532"/>
+</svg>
