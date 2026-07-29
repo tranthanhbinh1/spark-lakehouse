@@ -505,10 +505,12 @@ Phase 4 completion:
 - both the file-layout and H3 executor-sizing reports are explicitly accepted
 - H3 is canonical and Phase 4, the final experimental phase, is complete
 
-Remaining step:
+Phase 5 completion:
 
-1. Enter Phase 5 and assemble the final thesis/report narrative from the
-   accepted Phase 3 and Phase 4 evidence.
+1. Completed on 2026-07-29 after the research-content and rendered-artifact
+   approval gates passed. Student ID, external-supervisor name, and supervisor
+   signature are intentionally represented by printable blank lines for manual
+   completion before physical submission.
 
 ## Evaluation Dimensions
 
@@ -931,14 +933,16 @@ Tasks:
 - completed: execute and validate the H3 Spark executor-sizing experiment and
   generate its report
 - completed: explicitly accept the H3 executor-sizing report
-- next: compare optimized vs unoptimized hybrid results across the accepted
-  reports in Phase 5
+- completed: compare optimized vs unoptimized hybrid results across the
+  accepted reports in the Phase 5 synthesis draft
 
 Completion rule:
 
 Phase 4 is the final experimental phase. Its completion condition was satisfied
 on 2026-07-28 when both the file-layout and H3 executor-sizing reports had been
-explicitly accepted. Phase 5 remains for synthesis and thesis/report production.
+explicitly accepted. Phase 5 was completed on 2026-07-29 after research
+synthesis, template formatting, document validation, and explicit Gate 2
+approval.
 
 Output:
 
@@ -948,7 +952,11 @@ Output:
 
 Status:
 
-Unblocked by explicit acceptance of both Phase 4 reports on 2026-07-28.
+Completed on 2026-07-29. `docs/master_thesis_report.md` incorporates the
+accepted Phase 3 baseline, partition-pruning analysis, file-layout experiment,
+and H3 executor-sizing experiment. The content gate and rendered submission
+artifact gate passed. The remaining handwritten identity and certification
+fields are printable blanks rather than electronic placeholders.
 
 Goal:
 
@@ -956,14 +964,20 @@ Turn results into a defensible research narrative.
 
 Tasks:
 
-- summarize architecture tradeoffs
-- explain measurement limitations
-- report optimization outcomes
-- document future work
+- completed: summarize architecture tradeoffs
+- completed: explain measurement limitations
+- completed: report optimization outcomes
+- completed: document future work
+- completed: finalize acknowledgements, references, architecture rendering,
+  university-template formatting, TOC and caption lists, and PDF validation
+- completed: receive explicit Gate 2 approval with three fields reserved for
+  manual completion before physical submission
 
 Output:
 
-- final thesis/report material
+- canonical thesis source in `docs/master_thesis_report.md`
+- validated final DOCX and PDF under `build/thesis/`
+- build manifest and explicit visual-review approval record
 
 ## Success Criteria
 
